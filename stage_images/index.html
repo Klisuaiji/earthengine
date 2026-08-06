@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorldEngine 世界生成过程 - 各阶段图片</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #101318; color: #e8eaed; margin: 0; padding: 24px; }
+  h1 { text-align: center; color: #fff; font-weight: 600; }
+  .sub { text-align: center; color: #9aa0a6; margin-bottom: 28px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; max-width: 1400px; margin: 0 auto; }
+  .card { background: #1b2027; border-radius: 10px; overflow: hidden; border: 1px solid #2a3038; }
+  .card img { width: 100%; display: block; image-rendering: pixelated; }
+  .card .cap { padding: 10px 14px; }
+  .card .num { font-size: 12px; color: #8ab4f8; }
+  .card .name { font-weight: 600; margin: 2px 0; }
+  .card .desc { font-size: 13px; color: #bdc1c6; }
+</style>
+</head>
+<body>
+<h1>WorldEngine 世界生成过程</h1>
+<div class="sub">seed=1, 256x256, 10 个板块 &mdash; 每个阶段一张图，按生成顺序排列</div>
+<div class="grid">
+  <div class="card"><img src="01_plates_raw_elevation.png" alt=""><div class="cap"><div class="num">01</div><div class="name">板块模拟原始高程</div><div class="desc">platec 板块构造模拟输出的原始高程图，山脉链已初步成形</div></div></div>
+  <div class="card"><img src="02_plates_map.png" alt=""><div class="cap"><div class="num">02</div><div class="name">板块分布图（模拟原始）</div><div class="desc">platec 随机撒种生长出的 10 个板块，边界看起来较杂乱</div></div></div>
+  <div class="card"><img src="02b_plates_merged.png" alt=""><div class="cap"><div class="num">02b</div><div class="name">合并后六大板块</div><div class="desc">2 个海洋板块（中部）+ 4 个大陆板块（四周），边界为自然蜿蜒曲线、无缝拼合无飞地</div></div></div>
+  <div class="card"><img src="03_center_land_elevation.png" alt=""><div class="cap"><div class="num">03</div><div class="name">陆地居中</div><div class="desc">center_land：平移地图让海洋尽量集中在边界</div></div></div>
+  <div class="card"><img src="04_noise_elevation.png" alt=""><div class="cap"><div class="num">04</div><div class="name">叠加噪声</div><div class="desc">add_noise_to_elevation：8 层 Simplex 噪声为地形增加细节</div></div></div>
+  <div class="card"><img src="05_ocean_borders_elevation.png" alt=""><div class="cap"><div class="num">05</div><div class="name">边界海洋</div><div class="desc">place_oceans_at_map_borders：压低地图四周的高程</div></div></div>
+  <div class="card"><img src="06_ocean_initialized_elevation.png" alt=""><div class="cap"><div class="num">06</div><div class="name">海洋初始化后高程</div><div class="desc">识别海洋、平滑海床，并确定丘陵/山脉阈值</div></div></div>
+  <div class="card"><img src="07_ocean_mask.png" alt=""><div class="cap"><div class="num">07</div><div class="name">海洋掩码</div><div class="desc">白色=陆地，黑色=海洋（连通性填充结果）</div></div></div>
+  <div class="card"><img src="08_sea_depth.png" alt=""><div class="cap"><div class="num">08</div><div class="name">海深图</div><div class="desc">距离最近陆地的远近决定海深（越亮越深）</div></div></div>
+  <div class="card"><img src="09_temperature.png" alt=""><div class="cap"><div class="num">09</div><div class="name">温度</div><div class="desc">纬度 + 轴倾角 + 噪声 + 海拔修正（赤道亮、两极暗）</div></div></div>
+  <div class="card"><img src="10_precipitation.png" alt=""><div class="cap"><div class="num">10</div><div class="name">降水</div><div class="desc">噪声基础经温度 gamma 曲线修正，越亮越湿润</div></div></div>
+  <div class="card"><img src="11_rivermap.png" alt=""><div class="cap"><div class="num">11</div><div class="name">河流图</div><div class="desc">从降水累积形成的河源沿低处流向海洋的河道</div></div></div>
+  <div class="card"><img src="12_lakemap.png" alt=""><div class="cap"><div class="num">12</div><div class="name">湖泊图</div><div class="desc">无法到达海洋的河流积水形成的湖泊</div></div></div>
+  <div class="card"><img src="13_eroded_elevation.png" alt=""><div class="cap"><div class="num">13</div><div class="name">侵蚀后高程</div><div class="desc">河流切深河床、削缓两岸后的地形</div></div></div>
+  <div class="card"><img src="14_watermap.png" alt=""><div class="cap"><div class="num">14</div><div class="name">水系图</div><div class="desc">水滴扩散模拟，区分小溪/河流/主干河流量</div></div></div>
+  <div class="card"><img src="15_irrigation.png" alt=""><div class="cap"><div class="num">15</div><div class="name">灌溉扩散</div><div class="desc">河水向周边按距离衰减扩散，越亮水分越多</div></div></div>
+  <div class="card"><img src="16_humidity.png" alt=""><div class="cap"><div class="num">16</div><div class="name">湿度</div><div class="desc">降水与灌溉加权综合，越亮越湿润</div></div></div>
+  <div class="card"><img src="17_permeability.png" alt=""><div class="cap"><div class="num">17</div><div class="name">渗透性</div><div class="desc">6 层噪声生成的土壤/岩石渗透能力分布</div></div></div>
+  <div class="card"><img src="18_biome.png" alt=""><div class="cap"><div class="num">18</div><div class="name">生物群系</div><div class="desc">Holdridge 生命带模型：温度+湿度映射到具体生态区</div></div></div>
+  <div class="card"><img src="19_icecap.png" alt=""><div class="cap"><div class="num">19</div><div class="name">冰盖</div><div class="desc">寒冷海域的结冰厚度分布</div></div></div>
+</div>
+</body>
+</html>
