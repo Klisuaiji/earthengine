@@ -32,7 +32,16 @@ config = {
     "entry_points": {
         "console_scripts": ["worldengine=worldengine.cli.main:main"],
     },
-    "install_requires": ["PyPlatec==1.4.3", "pypng>=0.20220715.0", "numpy>=1.24.0", "noise==1.2.2", "protobuf>=4.21.0"],
+    "install_requires": [
+        # Plate tectonics are generated analytically by worldengine.spherical_voronoi;
+        # the PyPlatec C extension is no longer required.
+        "pypng>=0.20220715.0",
+        "numpy>=1.24.0",
+        "scipy>=1.10.0",
+        "Pillow>=10.0.0",
+        "noise==1.2.2",
+        "protobuf>=4.21.0",
+    ],
     "python_requires": ">=3.9",
     "classifiers": [
         "Development Status :: 4 - Beta",

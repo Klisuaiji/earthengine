@@ -1,70 +1,108 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WorldEngine 世界生成 - Platec vs 球面Voronoi</title>
+<title>WorldEngine · Spherical Voronoi + Terrain Diffusion 生成流程可视化</title>
 <style>
-  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #101318; color: #e8eaed; margin: 0; padding: 24px; }
-  h1 { text-align: center; color: #fff; font-weight: 600; margin-bottom: 8px; }
-  h2 { color: #c0c6ed; border-bottom: 1px solid #2a3038; padding-bottom: 8px; margin: 36px 0 16px; font-size: 18px; }
-  .sub { text-align: center; color: #9aa0a6; margin-bottom: 28px; font-size: 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 20px; max-width: 1500px; margin: 0 auto; }
-  .card { background: #1b2027; border-radius: 10px; overflow: hidden; border: 1px solid #2a3038; }
-  .card img { width: 100%; display: block; image-rendering: pixelated; }
-  .card .cap { padding: 10px 14px; }
-  .card .num { font-size: 12px; color: #8ab4f8; }
-  .card .name { font-weight: 600; margin: 2px 0; }
-  .card .desc { font-size: 13px; color: #bdc1c6; }
-  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
-  .badge-old { background: #3a3a4a; color: #aaa; }
-  .badge-new { background: #1a4a2a; color: #6fcf97; }
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f232c;
+    --border: #2b313c;
+    --text: #e6e9ef;
+    --muted: #9aa4b2;
+    --accent: #4aa3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header {
+    padding: 28px 32px 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #13161d, #0f1115);
+  }
+  header h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .badge {
+    display: inline-block; margin-left: 10px; padding: 2px 10px; border-radius: 999px;
+    background: #16301f; color: #5fd38a; font-size: 12px; border: 1px solid #1f5235;
+  }
+  main { padding: 24px 32px 60px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform .15s ease, border-color .15s ease;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .card .imgwrap {
+    background: var(--panel-2);
+    display: flex; align-items: center; justify-content: center;
+    min-height: 200px; padding: 10px;
+  }
+  .card img { max-width: 100%; height: auto; image-rendering: auto; border-radius: 4px; }
+  .card .meta { padding: 12px 14px 14px; }
+  .card .meta .num { color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: .5px; }
+  .card .meta h3 { margin: 2px 0 4px; font-size: 15px; font-weight: 600; }
+  .card .meta p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  footer { padding: 22px 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+  code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>
 </head>
 <body>
-<h1>WorldEngine 世界生成过程</h1>
-<div class="sub">seed=1, 512x512 &mdash; 两种板块生成管线对比</div>
+<header>
+  <h1>WorldEngine 生成流程可视化 <span class="badge">Spherical Voronoi + Terrain Diffusion</span></h1>
+  <p>板块与大陆构造由 <code>worldengine.spherical_voronoi</code> 解析生成（无 PyPlatec 物理模拟）。大陆骨架作为粗条件注入 Terrain Diffusion，渲染出真实高程（山脉、海沟）。温度/降水由真实地形驱动的物理模型计算。</p>
+</header>
 
-<h2>Platec 管线 <span class="badge badge-old">物理模拟</span></h2>
-<div class="sub" style="margin-bottom:12px">platec 板块构造模拟 (10板块 &rarr; 6大板块), 海陆比 76% / 24%</div>
-<div class="grid">
-  <div class="card"><img src="01_plates_raw_elevation.png"><div class="cap"><div class="num">01</div><div class="name">原始高程</div><div class="desc">platec 构造模拟输出，山脉链初步成形</div></div></div>
-  <div class="card"><img src="02_plates_map.png"><div class="cap"><div class="num">02</div><div class="name">原始板块</div><div class="desc">platec 随机生长的 10 个板块</div></div></div>
-  <div class="card"><img src="02b_plates_merged.png"><div class="cap"><div class="num">02b</div><div class="name">合并六大板块</div><div class="desc">2海+4陆, 邻接BFS合并</div></div></div>
-  <div class="card"><img src="03_center_land_elevation.png"><div class="cap"><div class="num">03</div><div class="name">陆地居中</div><div class="desc">center_land 平移</div></div></div>
-  <div class="card"><img src="04_noise_elevation.png"><div class="cap"><div class="num">04</div><div class="name">叠加噪声</div><div class="desc">8层Simplex噪声</div></div></div>
-  <div class="card"><img src="06_ocean_initialized_elevation.png"><div class="cap"><div class="num">05</div><div class="name">海洋初始化</div><div class="desc">识别海洋+平滑海床</div></div></div>
-  <div class="card"><img src="07_ocean_mask.png"><div class="cap"><div class="num">06</div><div class="name">海陆掩膜</div><div class="desc">蓝=海, 绿=陆</div></div></div>
-  <div class="card"><img src="08_sea_depth.png"><div class="cap"><div class="num">07</div><div class="name">海洋深度</div><div class="desc">距陆远近决定深度</div></div></div>
-  <div class="card"><img src="09_temperature.png"><div class="cap"><div class="num">08</div><div class="name">温度</div><div class="desc">纬度+海拔修正</div></div></div>
-  <div class="card"><img src="10_precipitation.png"><div class="cap"><div class="num">09</div><div class="name">降水</div><div class="desc">噪声+温度gamma修正</div></div></div>
-  <div class="card"><img src="11_rivermap.png"><div class="cap"><div class="num">10</div><div class="name">河流</div><div class="desc">从高地流向海洋</div></div></div>
-  <div class="card"><img src="13_eroded_elevation.png"><div class="cap"><div class="num">11</div><div class="name">侵蚀后高程</div><div class="desc">河流切深+削坡</div></div></div>
-  <div class="card"><img src="14_watermap.png"><div class="cap"><div class="num">12</div><div class="name">水系</div><div class="desc">水滴扩散模拟</div></div></div>
-  <div class="card"><img src="16_humidity.png"><div class="cap"><div class="num">13</div><div class="name">湿度</div><div class="desc">降水+灌溉加权</div></div></div>
-  <div class="card"><img src="18_biome.png"><div class="cap"><div class="num">14</div><div class="name">生物群系</div><div class="desc">Holdridge模型</div></div></div>
-  <div class="card"><img src="19_icecap.png"><div class="cap"><div class="num">15</div><div class="name">冰盖</div><div class="desc">寒冷海域结冰</div></div></div>
-</div>
+<main>
+<div class="grid" id="grid"></div>
+</main>
 
-<h2>球面 Voronoi 管线 <span class="badge badge-new">200微板块</span></h2>
-<div class="sub" style="margin-bottom:12px">domain-warped spherical Voronoi (200微板块 &rarr; 大陆核生长 &rarr; 6大板块), 海陆比 60% / 40%, 边界细节丰富</div>
-<div class="grid">
-  <div class="card"><img src="02_sv_raw_plates.png"><div class="cap"><div class="num">01</div><div class="name">200原始Voronoi微板块</div><div class="desc">域扭曲(0.05rad)+分块计算+压力松弛, 零空板块, 边界光滑自然</div></div></div>
-  <div class="card"><img src="02b_sv_merged.png"><div class="cap"><div class="num">02</div><div class="name">大陆核生长合并</div><div class="desc">海洋中心&rarr;大陆反心&rarr;面积均衡BFS, 6大板块(2海+4陆), 485种过渡色</div></div></div>
-  <div class="card"><img src="01_sv_elevation.png"><div class="cap"><div class="num">03</div><div class="name">合成高程</div><div class="desc">距离变换+5层分形噪声</div></div></div>
-  <div class="card"><img src="03_sv_center_land.png"><div class="cap"><div class="num">04</div><div class="name">陆地居中</div><div class="desc">center_land 平移</div></div></div>
-  <div class="card"><img src="04_sv_noise_elevation.png"><div class="cap"><div class="num">05</div><div class="name">叠加噪声</div><div class="desc">8层Simplex噪声</div></div></div>
-  <div class="card"><img src="06_sv_ocean_init.png"><div class="cap"><div class="num">06</div><div class="name">海洋初始化</div><div class="desc">识别海洋+平滑海床</div></div></div>
-  <div class="card"><img src="07_sv_ocean_mask.png"><div class="cap"><div class="num">07</div><div class="name">海陆掩膜</div><div class="desc">蓝=海(56%), 绿=陆(44%)</div></div></div>
-  <div class="card"><img src="08_sv_sea_depth.png"><div class="cap"><div class="num">08</div><div class="name">海洋深度</div><div class="desc">浅蓝=浅海, 深蓝=深海</div></div></div>
-  <div class="card"><img src="09_sv_temperature.png"><div class="cap"><div class="num">09</div><div class="name">温度</div><div class="desc">纬度+海拔修正</div></div></div>
-  <div class="card"><img src="10_sv_precipitation.png"><div class="cap"><div class="num">10</div><div class="name">降水</div><div class="desc">噪声+温度gamma修正</div></div></div>
-  <div class="card"><img src="11_sv_rivermap.png"><div class="cap"><div class="num">11</div><div class="name">河流</div><div class="desc">从高地流向海洋</div></div></div>
-  <div class="card"><img src="13_sv_eroded_elevation.png"><div class="cap"><div class="num">12</div><div class="name">侵蚀后高程</div><div class="desc">河流切深+削坡</div></div></div>
-  <div class="card"><img src="14_sv_watermap.png"><div class="cap"><div class="num">13</div><div class="name">水系</div><div class="desc">水滴扩散模拟</div></div></div>
-  <div class="card"><img src="16_sv_humidity.png"><div class="cap"><div class="num">14</div><div class="name">湿度</div><div class="desc">降水+灌溉加权</div></div></div>
-  <div class="card"><img src="18_sv_biome.png"><div class="cap"><div class="num">15</div><div class="name">生物群系</div><div class="desc">Holdridge模型</div></div></div>
-  <div class="card"><img src="19_sv_icecap.png"><div class="cap"><div class="num">16</div><div class="name">冰盖</div><div class="desc">寒冷海域结冰</div></div></div>
-</div>
+<footer>
+  图像由 <code>tools/generate_stages_voronoi.py</code> 生成。扩散地形来自 <code>tools/diffusion_world.py</code>；气候采用自包含物理模型（纬度温度带 + 高程递减率 + 地形性降水）。
+</footer>
+
+<script>
+  // Ordered pipeline stages. [filename, stage label, description]
+  const stages = [
+    ["01_sv_raw_plates.png", "原始微板块", "最细粒度的球面 Voronoi 种子分区（n_raw 块）。"],
+    ["02_sv_merged.png", "合并大板块", "将小板块合并为 n_big 个主大陆/大洋板块（面积按参考权重 23.33/17.78/17.78/15.56/14.44/11.11；黑线 = 边界）。"],
+    ["03_sv_continents.png", "生成的大陆", "陆地板块即大陆，海洋板块为海；参考 world_gen.py 权重布局。"],
+    ["04_sv_boundary_types.png", "板块边界分类", "按板块相对速度分类：<b>紫=消亡(造山)</b> · <b>绿=生长(海岭)</b> · <b>橙=平移(转换)</b> · <b>浅灰=板块内部</b>。"],
+    ["05_sv_elevation_relief.png", "真实地形", "Terrain Diffusion 根据大陆骨架渲染的高程：山体阴影 + 高程设色。"],
+    ["06_sv_temperature.png", "温度", "物理模型：纬度温度带 + 高程递减率（6.5 °C/km）。"],
+    ["07_sv_precipitation.png", "降水", "物理模型：ITCZ/西风带 + 地形性迎风坡增强。"],
+    ["08_sv_ocean_mask.png", "海陆掩膜", "最终海陆二值掩膜（蓝 = 海 · 绿 = 陆）。"],
+  ];
+
+  const grid = document.getElementById("grid");
+  for (const [file, label, desc] of stages) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="imgwrap">
+        <img loading="lazy" src="${file}" alt="${label}" onerror="this.style.opacity=0.25; this.title='未生成: ${file}';">
+      </div>
+      <div class="meta">
+        <div class="num">${file}</div>
+        <h3>${label}</h3>
+        <p>${desc}</p>
+      </div>`;
+    grid.appendChild(card);
+  }
+</script>
 </body>
 </html>

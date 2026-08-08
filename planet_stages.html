@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planet Pipeline - 完整生成流程阶段图</title>
+  <style>
+    :root { --bg:#f7f8fa; --card:#fff; --muted:#6b7280; --accent:#2563eb; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           margin:0; padding:24px; background:var(--bg); color:#111; }
+    h1 { text-align:center; margin:12px 0 6px; }
+    .sub { text-align:center; color:var(--muted); margin-bottom:28px; }
+    .phase { margin:32px 0; }
+    .phase h2 { border-left:5px solid var(--accent); padding-left:12px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
+            gap:18px; }
+    .card { background:var(--card); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.08);
+            overflow:hidden; }
+    .card img { display:block; width:100%; height:auto; image-rendering:auto; }
+    .info { padding:12px 14px; }
+    .step { font-weight:700; color:var(--accent); margin-bottom:4px; }
+    .desc { color:var(--muted); font-size:.92em; }
+  </style>
+</head>
+<body>
+  <h1>Planet Pipeline - 完整生成流程阶段图</h1>
+  <div class="sub">构造 → 气候/渲染 → 生态/文明（seed=1234567, 1024×512）</div>
+
+  <section class="phase">
+    <h2>第一阶段：地质构造（Tectonic Phase）</h2>
+    <div class="grid">
+      <div class="card"><img src="planet_out/01_plates_raw.png" alt="01"><div class="info"><div class="step">① 板块模拟</div><div class="desc">球面 Voronoi 微板块初始划分。</div></div></div>
+      <div class="card"><img src="planet_out/02_plates_merged.png" alt="02"><div class="info"><div class="step">② 合并板块</div><div class="desc">微板块合并为 6 大板块（黑线为板块边界）。</div></div></div>
+      <div class="card"><img src="planet_out/03_continents.png" alt="03"><div class="info"><div class="step">④ 模拟大陆</div><div class="desc">非海洋板块即为大陆，海洋板块为海盆。</div></div></div>
+      <div class="card"><img src="planet_out/04_boundary_types.png" alt="04"><div class="info"><div class="step">③ 划分边界</div><div class="desc">红=消亡边界（海沟/造山带），绿=生长边界（洋中脊），蓝=转换边界。</div></div></div>
+      <div class="card"><img src="planet_out/05_coarse_elevation.png" alt="05"><div class="info"><div class="step">⑧ 初步灰度图</div><div class="desc">基于边界应力的大尺度高程：汇聚边界造山、发散边界成海岭/海沟。</div></div></div>
+      <div class="card"><img src="planet_out/06_initial_coloring.png" alt="06"><div class="info"><div class="step">⑦ 初步着色</div><div class="desc">海洋/平原/丘陵/山地的粗分类设色。</div></div></div>
+      <div class="card"><img src="planet_out/07_land_mask_refined.png" alt="07"><div class="info"><div class="step">⑤ 海岸线细分 / ⑥ 岛屿分裂</div><div class="desc">在 Voronoi 边界窄带上做分形涨落，并生成群岛/半岛。</div></div></div>
+      <div class="card"><img src="planet_out/08_elevation_relief.png" alt="08"><div class="info"><div class="step">⑨ 扩散模型细化</div><div class="desc">Terrain Diffusion 在粗骨架上生成真实山海起伏。</div></div></div>
+    </div>
+  </section>
+
+  <section class="phase">
+    <h2>第二阶段：气候与渲染（Climate & Rendering Phase）</h2>
+    <div class="grid">
+      <div class="card"><img src="planet_out/09_temperature.png" alt="09"><div class="info"><div class="step">⑬ 太阳辐射 / 温度带</div><div class="desc">纬度基础温度 + 海拔递减率 + 海陆热力差异。</div></div></div>
+      <div class="card"><img src="planet_out/10_pressure.png" alt="10"><div class="info"><div class="step">⑭ 大陆气压</div><div class="desc">热力低压/高压异常 + 地形扰动。</div></div></div>
+      <div class="card"><img src="planet_out/11_wind.png" alt="11"><div class="info"><div class="step">⑮ 风带模拟</div><div class="desc">行星风系 + 地形偏转（矢量叠加在地形上）。</div></div></div>
+      <div class="card"><img src="planet_out/12_precipitation.png" alt="12"><div class="info"><div class="step">⑯ 降水模拟</div><div class="desc">纬向基础降水 + 迎风坡增强 + 雨影衰减 + 内陆干旱。</div></div></div>
+      <div class="card"><img src="planet_out/13_koppen.png" alt="13"><div class="info"><div class="step">⑰ 气候模拟（Köppen）</div><div class="desc">简化 Köppen 气候分类。</div></div></div>
+      <div class="card"><img src="planet_out/14_ice.png" alt="14"><div class="info"><div class="step">⑱ 冰层上色</div><div class="desc">极地冰盖与高山冰川。</div></div></div>
+      <div class="card"><img src="planet_out/15_ocean_currents.png" alt="15"><div class="info"><div class="step">⑲ 大型洋流模拟</div><div class="desc">风驱 + 边界强化的表层洋流矢量。</div></div></div>
+      <div class="card"><img src="planet_out/15b_sst.png" alt="15b"><div class="info"><div class="step">⑲ 海表温度（洋流耦合）</div><div class="desc">洋流输运后的海表温度，用于修正冰盖范围。</div></div></div>
+      <div class="card"><img src="planet_out/20_composite.png" alt="20"><div class="info"><div class="step">⑳ 图像叠加</div><div class="desc">地形 + 冰盖的合成底图。</div></div></div>
+      <div class="card"><img src="planet_out/21_satellite.png" alt="21"><div class="info"><div class="step">㉑ 卫星图生成</div><div class="desc">自然色卫星风格（生物群系 + 地形晕渲 + 冰盖）。</div></div></div>
+      <div class="card"><img src="planet_out/22_planet.png" alt="22"><div class="info"><div class="step">㉒ 行星图生成</div><div class="desc">风格化行星地图。</div></div></div>
+    </div>
+  </section>
+
+  <section class="phase">
+    <h2>第三阶段：生态与文明（Ecology & Civilization Phase）</h2>
+    <div class="grid">
+      <div class="card"><img src="planet_out/16_biome.png" alt="16"><div class="info"><div class="step">㉓ 生态模拟</div><div class="desc">由 Köppen + 海拔 + 冰盖生成生物群系。</div></div></div>
+      <div class="card"><img src="planet_out/17_civilization_index.png" alt="17"><div class="info"><div class="step">㉔ 文明发展指数预测</div><div class="desc">宜居性评分：可耕地、淡水、气候舒适度、资源可达性。</div></div></div>
+      <div class="card"><img src="planet_out/18_civilization_points.png" alt="18"><div class="info"><div class="step">㉕ 确立文明点</div><div class="desc">在宜居热点中按地理隔离度筛选文明起源地。</div></div></div>
+    </div>
+  </section>
+</body>
+</html>

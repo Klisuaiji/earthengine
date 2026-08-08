@@ -10,7 +10,7 @@ WorldEngine is a procedural world generator that simulates realistic terrain thr
 
 World generation follows a strict sequential pipeline in `worldengine/generation.py`:
 
-1. **Plates** (`plates.py` + PyPlatec C extension) → generates elevation and plate boundaries
+1. **Plates** (`plates.py` via `spherical_voronoi.py`, no PyPlatec C extension) → generates elevation and plate boundaries analytically
 2. **Temperature** → based on latitude and elevation
 3. **Precipitation** → considering rain shadow effects and ocean proximity
 4. **Erosion** → modifies elevation based on water flow
@@ -109,7 +109,7 @@ coverage report --omit=worldengine/tests/* --show-missing
 - Tests in `tests/*_test.py` use unittest framework
 - `TestBase` in `tests/draw_test.py` provides common fixtures
 - Visual regression via `tests/blessed_images/` (compare generated images)
-- No mocking of NumPy/PyPlatec; tests use actual generation
+- No mocking of NumPy; tests use actual generation
 
 ## CLI Entry Point
 
@@ -122,7 +122,7 @@ All CLI commands route through functions that call `world_gen()` or draw operati
 
 ## Critical Dependencies
 
-- **PyPlatec**: C extension for plate tectonics (fails gracefully if unavailable)
+- **scipy / Pillow / noise**: core numerical & image dependencies (PyPlatec is no longer required — plate tectonics are generated analytically by `worldengine.spherical_voronoi`)
 - **NumPy**: All data is numpy arrays; version pinned for reproducibility
 - **protobuf 3.0.0a3**: Exact version required for compatibility
 - **pypng**: Image output (not PIL/Pillow)

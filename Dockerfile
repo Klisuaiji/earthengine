@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies for PyPlatec and h5py
+# Install system dependencies for h5py (optional, build from source if no wheel)
 RUN apt-get update && \
     apt-get -y install --no-install-recommends \
     gcc \

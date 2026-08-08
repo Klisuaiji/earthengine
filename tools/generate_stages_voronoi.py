@@ -1,70 +1,68 @@
 #!/usr/bin/env python3
-"""WorldEngine pipeline with spherical Voronoi plates (14 raw -> 6 merged).
+"""WorldEngine stage renderer driven by spherical Voronoi plates + Terrain Diffusion.
 
-Replaces the platec tectonic simulation with domain-warped spherical
-Voronoi, then generates elevation, runs climate simulation, and saves
-all stages as colour PNGs.
+Generates the plate layout with :mod:`worldengine.spherical_voronoi`
+(domain-warped spherical Voronoi, ``n_raw`` micro-plates merged into
+``n_big`` major plates), then feeds the resulting continent/ocean mask into the
+Terrain Diffusion model as coarse elevation conditioning. The diffusion model
+renders real elevation (mountains, ocean trenches), and a compact physical
+climate model produces temperature/precipitation from the new terrain.
+
+Pipeline::
+
+    raw plates -> merged plates -> continents -> boundary types
+    -> diffusion elevation (real relief) -> temperature -> precipitation
+    -> land/sea mask
+
+Usage (requires the terrain-diffusion venv, default CUDA device)::
+
+    python tools/generate_stages_voronoi.py                  # 1024x512, seed 1
+    python tools/generate_stages_voronoi.py -W 2048 -H 1024
+    python tools/generate_stages_voronoi.py --seed 7 --out /tmp/stages
 """
 
+import argparse
 import os
 import sys
+from pathlib import Path
 
 import numpy
-
-sys.path.insert(0, "/workspace")
-
-from worldengine.biome import biome_name_to_index
-from worldengine.draw import _biome_colors
-from worldengine.generation import (
-    Step,
-    add_noise_to_elevation,
-    center_land,
-    initialize_ocean_and_thresholds,
-    place_oceans_at_map_borders,
-)
-from worldengine.image_io import PNGWriter
-from worldengine.model.world import GenerationParameters, Size, World
-from worldengine.simulations.biome import BiomeSimulation
-from worldengine.simulations.erosion import ErosionSimulation
-from worldengine.simulations.humidity import HumiditySimulation
-from worldengine.simulations.hydrology import WatermapSimulation
-from worldengine.simulations.icecap import IcecapSimulation
-from worldengine.simulations.irrigation import IrrigationSimulation
-from worldengine.simulations.permeability import PermeabilitySimulation
-from worldengine.simulations.precipitation import PrecipitationSimulation
-from worldengine.simulations.temperature import TemperatureSimulation
-
 from PIL import Image
 
-sys.path.insert(0, "/workspace/tools")
-from spherical_voronoi import generate_spherical_plates
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-OUT = "/workspace/stage_images"
-W, H = 4096, 2048
-SEED = 1
-N_RAW = 30
-N_BIG = 6
+from worldengine.image_io import PNGWriter
+from worldengine.plate_boundaries import classify_boundaries
+from worldengine.spherical_voronoi import (
+    PLATE_AREAS,
+    PLATE_OCEAN,
+    generate_spherical_world,
+    remove_enclaves,
+)
 
-# ---------------- colour maps (normalised 0..1) ----------------
+# Diffusion terrain pipeline lives in the terrain-diffusion venv; import its helpers.
+from tools.diffusion_world import (
+    build_pipeline,
+    conditioning_from_mask,
+    generate_world as generate_diffusion_world,
+    render_relief,
+    _colormap_png,
+    compute_physical_climate,
+    clamp_land_sea,
+)
 
-TERRAIN = [
-    (0.00, (20, 40, 110)), (0.18, (40, 90, 160)), (0.32, (80, 145, 200)),
-    (0.42, (95, 175, 205)), (0.48, (70, 150, 85)), (0.60, (135, 185, 95)),
-    (0.72, (200, 175, 115)), (0.85, (160, 135, 115)), (1.00, (250, 250, 250)),
-]
-TEMPERATURE = [
-    (0.00, (0, 0, 150)), (0.25, (30, 110, 210)), (0.50, (120, 200, 130)),
-    (0.75, (255, 200, 50)), (1.00, (220, 30, 20)),
-]
-PRECIPITATION = [
-    (0.00, (255, 255, 210)), (0.33, (190, 230, 160)), (0.66, (70, 180, 210)),
-    (1.00, (10, 70, 180)),
-]
-SEA_DEPTH = [(0.00, (120, 190, 230)), (0.50, (40, 100, 190)), (1.00, (5, 20, 90))]
-HUMIDITY = [(0.00, (230, 220, 150)), (0.50, (120, 190, 90)), (1.00, (20, 110, 40))]
-PERMEABILITY = [(0.00, (150, 120, 80)), (0.50, (190, 170, 110)), (1.00, (120, 190, 110))]
-WATERMAP = [(0.00, (245, 245, 235)), (0.60, (90, 180, 235)), (0.90, (20, 90, 220)), (1.00, (5, 30, 120))]
-ICECAP = [(0.00, (150, 190, 225)), (1.00, (255, 255, 255))]
+DEFAULT_OUT = str(ROOT / "stage_images")
+DEFAULT_W, DEFAULT_H = 1024, 512
+DEFAULT_SEED = 1
+DEFAULT_N_RAW = 30
+DEFAULT_N_BIG = 6
+
+# Set by main(); every save_* helper writes here.
+OUT = DEFAULT_OUT
+
+# ---------------- palettes ----------------
 
 PLATE_PALETTE = numpy.array(
     [
@@ -84,25 +82,23 @@ MERGED_PALETTE = numpy.array(
     dtype=float,
 )
 
+CONTINENT_PALETTE = numpy.array([
+    (28, 62, 110),   # ocean       (label -1 -> idx 0)
+    (46, 120, 52),   # continent 0
+    (120, 180, 90),  # continent 1
+    (200, 160, 70),  # continent 2
+], dtype=numpy.uint8)
+
+BOUNDARY_PALETTE = numpy.array([
+    (240, 240, 250),  # INTERIOR
+    (160, 32, 240),   # CONVERGENT (purple)
+    (30, 180, 60),    # DIVERGENT (green)
+    (255, 140, 0),    # TRANSFORM (orange)
+], dtype=numpy.uint8)
+
 
 def ensure_out():
     os.makedirs(OUT, exist_ok=True)
-
-
-def save_color(array, name, stops):
-    path = os.path.join(OUT, name)
-    stops = sorted(stops, key=lambda s: s[0])
-    xs = numpy.array([s[0] for s in stops], dtype=float)
-    cs = numpy.array([s[1] for s in stops], dtype=float)
-    a = numpy.asarray(array, dtype=float)
-    amin, amax = a.min(), a.max()
-    if amax == amin:
-        amax = amin + 1.0
-    n = (a - amin) / (amax - amin)
-    rgb = numpy.stack([numpy.interp(n, xs, cs[:, i]) for i in range(3)], axis=-1).astype(numpy.uint8)
-    img = PNGWriter.rgb_from_array(rgb, path)
-    img.complete()
-    print("wrote", path)
 
 
 def save_plates(array, name):
@@ -113,123 +109,6 @@ def save_plates(array, name):
     img = PNGWriter.rgb_from_array(rgb, path)
     img.complete()
     print("wrote", path)
-
-
-def fractal_noise_field(shape, seed, octaves=4, base_res=64):
-    """Low-res FBM field upscaled to (h, w) array shape via PIL BILINEAR."""
-    fbm = numpy.zeros((base_res, base_res), dtype=numpy.float32)
-    amp = 1.0
-    norm = 0.0
-    rng = numpy.random.RandomState(seed)
-    for o in range(octaves):
-        res = max(2, int(base_res * amp))
-        small = rng.rand(res, res).astype(numpy.float32) * 2.0 - 1.0
-        img = Image.fromarray(((small + 1.0) * 127.5).astype(numpy.uint8))
-        fbm += amp * (numpy.asarray(img.resize((base_res, base_res), Image.BILINEAR), dtype=numpy.float32) / 127.5 - 1.0)
-        norm += amp
-        amp *= 0.5
-    fbm /= max(norm, 1e-6)
-    img = Image.fromarray(((fbm + 1.0) * 127.5).astype(numpy.uint8))
-    img = img.resize((shape[1], shape[0]), Image.BILINEAR)
-    return numpy.asarray(img, dtype=numpy.float32) / 127.5 - 1.0
-
-
-def _distance_from_boundary(mask):
-    """Distance transform: distance of each mask pixel to the nearest non-mask pixel."""
-    from scipy import ndimage
-    h, w = mask.shape
-    dm = ndimage.distance_transform_edt(mask)
-    dmax = dm.max()
-    if dmax <= 0:
-        return numpy.zeros((h, w), dtype=numpy.float32)
-    return (dm / dmax).astype(numpy.float32)
-
-
-def _generate_elevation(merged, h, w, seed):
-    """Generate elevation from Voronoi merged groups."""
-    ocean_mask = merged < 2
-    elevation = numpy.where(ocean_mask, -5000.0, -2000.0)
-
-    noise_a = fractal_noise_field((h, w), seed, octaves=4, base_res=64)
-    noise_b = fractal_noise_field((h, w), seed + 1, octaves=5, base_res=48)
-    noise_c = fractal_noise_field((h, w), seed + 2, octaves=4, base_res=42)
-    noise_d = fractal_noise_field((h, w), seed + 3, octaves=6, base_res=36)
-    noise_e = fractal_noise_field((h, w), seed + 4, octaves=3, base_res=28)
-
-    for g in range(2, N_BIG):
-        mask = merged == g
-        if mask.sum() < 100:
-            continue
-        dm = _distance_from_boundary(mask)
-        elevation += mask.astype(float) * dm * 5000.0
-
-    elevation += noise_a * 1200.0
-    elevation += noise_b * 600.0
-    elevation += noise_c * 900.0
-    elevation += noise_d * 400.0
-
-    # Tiny jitter to break elevation ties (prevents droplet recursion)
-    rng = numpy.random.RandomState(seed + 999)
-    elevation += rng.rand(h, w).astype(numpy.float32) * 0.01
-
-    return elevation.astype(numpy.float32)
-
-
-def _voronoi_world(name, w, h, seed, n_raw=N_RAW, n_big=N_BIG,
-                   temps=None, humids=None, gamma_curve=1.25, curve_offset=0.2,
-                   ocean_level=1.0, step=Step.full()):
-    """Create a World with spherical Voronoi plates + synthetic elevation."""
-    if temps is None:
-        temps = [0.874, 0.765, 0.594, 0.439, 0.366, 0.124]
-    if humids is None:
-        humids = [0.941, 0.778, 0.507, 0.236, 0.073, 0.014, 0.002]
-
-    raw, merged = generate_spherical_plates(seed, w, h, n_raw=n_raw, n_big=n_big)
-    elevation = _generate_elevation(merged, h, w, seed)
-    elevation -= elevation.min()
-    elevation /= elevation.max()
-    elevation *= 8000.0
-    elevation -= 4000.0
-
-    world = World(
-        name,
-        Size(w, h),
-        seed,
-        GenerationParameters(n_raw, ocean_level, step),
-        temps, humids, gamma_curve, curve_offset,
-    )
-    world.elevation = (elevation, {"ocean": 0.0})
-    world.plates = raw
-    return world, merged
-
-
-def _label_components(mask):
-    from scipy import ndimage
-    lab, n = ndimage.label(mask, structure=numpy.ones((3, 3), dtype=int))
-    return lab.astype(numpy.int32), int(n)
-
-
-def _remove_enclaves(plates, min_frac=0.0005):
-    h, w = plates.shape
-    min_area = int(min_frac * h * w)
-    out = plates.astype(int).copy()
-    for g in numpy.unique(plates):
-        mask = out == g
-        lab, n = _label_components(mask)
-        for c in range(1, n + 1):
-            comp = lab == c
-            if int(comp.sum()) < min_area:
-                yy, xx = numpy.nonzero(comp)
-                neigh = numpy.concatenate([
-                    out[numpy.clip(yy + dy, 0, h - 1), numpy.clip(xx + dx, 0, w - 1)]
-                    for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                    if not (dy == 0 and dx == 0)
-                ])
-                neigh = neigh[neigh != g]
-                if len(neigh):
-                    vals, counts = numpy.unique(neigh, return_counts=True)
-                    out[comp] = int(vals[counts.argmax()])
-    return out
 
 
 def save_merged_plates(merged, name):
@@ -256,121 +135,136 @@ def save_merged_plates(merged, name):
     img.complete()
     print("wrote", path)
 
+    n_groups_expected = len(PLATE_AREAS)
     for g in range(n_groups):
         area = (merged == g).sum()
-        kind = "oceanic" if g < 2 else "continental"
-        print(f"  group {g} ({kind}): area {area} px ({area/(h*w)*100:.1f}%)")
+        if n_groups == n_groups_expected:
+            kind = "oceanic" if PLATE_OCEAN[g] else "continental"
+        else:
+            kind = "oceanic" if g < 2 else "continental"
+        print(f"  group {g} ({kind}): area {area} px ({area / (h * w) * 100:.1f}%)")
 
 
-def save_ocean_mask(world, name):
+def save_continents(continent_mask, name):
     path = os.path.join(OUT, name)
-    ocean = world.layers["ocean"].data
-    h, w = ocean.shape
+    palette = CONTINENT_PALETTE
+    # shift labels by +1 so -1 (ocean) maps to index 0
+    idx = numpy.clip(continent_mask + 1, 0, palette.shape[0] - 1)
+    rgb = palette[idx.astype(numpy.int32)]
+    img = PNGWriter.rgb_from_array(rgb, path)
+    img.complete()
+    land_pct = float((continent_mask >= 0).sum()) / continent_mask.size * 100.0
+    print("wrote", path, f"land={land_pct:.1f}%")
+
+
+def save_boundary_types(boundary_type, name):
+    path = os.path.join(OUT, name)
+    rgb = BOUNDARY_PALETTE[boundary_type.astype(numpy.int8)]
+    img = PNGWriter.rgb_from_array(rgb, path)
+    img.complete()
+    counts = {int(k): int((boundary_type == k).sum()) for k in numpy.unique(boundary_type)}
+    print("wrote", path, "boundary counts:", counts)
+
+
+def save_elevation_relief(elev, name, vert_exag=2.5):
+    """Render the diffusion elevation as a hillshaded hypsometric relief PNG."""
+    path = os.path.join(OUT, name)
+    render_relief(elev, path, vert_exag=vert_exag)
+    print("wrote", path)
+
+
+def save_colormap(arr, name, cmap="viridis"):
+    """Render a single-channel climate field to a PNG."""
+    path = os.path.join(OUT, name)
+    _colormap_png(arr, path, cmap=cmap)
+    print("wrote", path)
+
+
+def save_ocean_mask(ocean_mask, name):
+    path = os.path.join(OUT, name)
+    h, w = ocean_mask.shape
     rgb = numpy.zeros((h, w, 3), dtype=numpy.uint8)
-    rgb[:] = (95, 160, 90)
-    rgb[ocean] = (70, 130, 210)
+    rgb[:] = (95, 160, 90)          # land
+    rgb[ocean_mask] = (70, 130, 210)  # ocean
     img = PNGWriter.rgb_from_array(rgb, path)
     img.complete()
     print("wrote", path)
 
 
-def save_rivers(world, name):
+def save_terrain_kinds(terrain, name):
     path = os.path.join(OUT, name)
-    ocean = world.layers["ocean"].data
-    river = world.layers["river_map"].data
-    lake = world.layers["lake_map"].data
-    h, w = ocean.shape
-    rgb = numpy.zeros((h, w, 3), dtype=numpy.uint8)
-    rgb[:] = (185, 205, 150)
-    rgb[ocean] = (80, 135, 205)
-    rgb[lake != 0] = (50, 130, 205)
-    rgb[river > 0] = (10, 55, 180)
+    rgb = TERRAIN_RGB[terrain.astype(numpy.int32)]
     img = PNGWriter.rgb_from_array(rgb, path)
     img.complete()
-    print("wrote", path)
+    counts = {int(k): int((terrain == k).sum()) for k in numpy.unique(terrain)}
+    print("wrote", path, "terrain counts:", counts)
 
 
-def save_biome(world, name):
-    path = os.path.join(OUT, name)
-    bm = world.layers["biome"].data
-    h, w = bm.shape
-    rgb = numpy.zeros((h, w, 3), dtype=numpy.uint8)
-    for name_, color in _biome_colors.items():
-        rgb[bm == name_] = color[:3]
-    rgb[bm == "bare rock"] = (128, 128, 128)
-    img = PNGWriter.rgb_from_array(rgb, path)
-    img.complete()
-    print("wrote", path)
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("-W", "--width", type=int, default=DEFAULT_W, help="map width in pixels")
+    ap.add_argument("-H", "--height", type=int, default=DEFAULT_H, help="map height in pixels")
+    ap.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="world seed")
+    ap.add_argument("--n-raw", type=int, default=DEFAULT_N_RAW, help="number of Voronoi micro-plates")
+    ap.add_argument("--n-big", type=int, default=DEFAULT_N_BIG, help="number of merged major plates (2 oceanic)")
+    ap.add_argument("-o", "--out", default=DEFAULT_OUT, help="output directory for the stage PNGs")
+    return ap.parse_args(argv)
 
 
-def main():
+def main(argv=None):
+    global OUT
+    args = parse_args(argv)
+    OUT = args.out
+    w, h, seed = args.width, args.height, args.seed
     ensure_out()
 
-    step = Step.full()
-    world, merged = _voronoi_world("stages_voronoi", W, H, SEED, n_raw=N_RAW, n_big=N_BIG, step=step)
+    print(f"generating {w}x{h}, seed={seed}, {args.n_raw} micro-plates -> {args.n_big} major plates")
+    raw, merged, land_mask, continent_mask = generate_spherical_world(
+        seed, w=w, h=h, n_raw=args.n_raw, n_big=args.n_big
+    )
+    merged = remove_enclaves(merged, min_frac=0.0005)
+    ocean_mask = ~land_mask
 
-    # 1. spherical Voronoi raw plates + merged groups
-    save_color(world.layers["elevation"].data, "01_sv_elevation.png", TERRAIN)
-    save_plates(world.layers["plates"].data, "02_sv_raw_plates.png")
-    merged = _remove_enclaves(merged, min_frac=0.0005)
-    save_merged_plates(merged, "02b_sv_merged.png")
+    # 1. raw micro-plates
+    save_plates(raw, "01_sv_raw_plates.png")
 
-    # 2. center land
-    center_land(world)
-    save_color(world.layers["elevation"].data, "03_sv_center_land.png", TERRAIN)
+    # 2. merged major plates (with anti-aliased boundaries)
+    save_merged_plates(merged, "02_sv_merged.png")
 
-    # 3. add noise
-    add_noise_to_elevation(world, numpy.random.randint(0, 4096))
-    save_color(world.layers["elevation"].data, "04_sv_noise_elevation.png", TERRAIN)
+    # 3. generated continents
+    save_continents(continent_mask, "03_sv_continents.png")
 
-    # 4. ocean borders + init
-    place_oceans_at_map_borders(world)
-    save_color(world.layers["elevation"].data, "05_sv_ocean_borders.png", TERRAIN)
-    initialize_ocean_and_thresholds(world)
-    save_color(world.layers["elevation"].data, "06_sv_ocean_init.png", TERRAIN)
-    save_ocean_mask(world, "07_sv_ocean_mask.png")
-    save_color(world.layers["sea_depth"].data, "08_sv_sea_depth.png", SEA_DEPTH)
+    # 4. plate boundary classification
+    bnd = classify_boundaries(merged, seed=seed)
+    save_boundary_types(bnd["boundary_type"], "04_sv_boundary_types.png")
 
-    rng = numpy.random.RandomState(SEED)
-    sub_seeds = rng.randint(0, numpy.iinfo(numpy.int32).max, size=100)
+    # 5-7. Terrain Diffusion: real elevation + physical climate.
+    print("building diffusion pipeline ...")
+    pipe = build_pipeline(seed=seed, device="cuda")
+    print("injecting Voronoi coarse conditioning ...")
+    grid = conditioning_from_mask(land_mask)
+    pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=-8000.0)
+    print(f"generating diffusion elevation {w}x{h} ...")
+    elev, climate_raw = generate_diffusion_world(pipe, w, h, tile=256, device="cuda")
+    pipe.close()
+    elev = clamp_land_sea(elev, land_mask)
+    temp, precip = compute_physical_climate(elev, h, w)
+    print("  land%%=%.1f  elev[%.1f/%.1f]  temp[%.1f/%.1f]  precip[%.0f/%.0f]" %
+          ((elev >= 0).mean() * 100, elev.min(), elev.max(), temp.min(), temp.max(),
+           precip.min(), precip.max()))
 
-    # 5. temperature
-    TemperatureSimulation().execute(world, sub_seeds[4])
-    save_color(world.layers["temperature"].data, "09_sv_temperature.png", TEMPERATURE)
+    save_elevation_relief(elev, "05_sv_elevation_relief.png")
+    save_colormap(temp, "06_sv_temperature.png", cmap="turbo")
+    save_colormap(precip, "07_sv_precipitation.png", cmap="viridis")
 
-    # 6. precipitation
-    PrecipitationSimulation().execute(world, sub_seeds[0])
-    save_color(world.layers["precipitation"].data, "10_sv_precipitation.png", PRECIPITATION)
+    # 8. land / sea mask
+    save_ocean_mask(ocean_mask, "08_sv_ocean_mask.png")
 
-    # 7. erosion -> rivers + lakes
-    ErosionSimulation().execute(world, sub_seeds[1])
-    save_rivers(world, "11_sv_rivermap.png")
-    save_rivers(world, "12_sv_lakemap.png")
-    save_color(world.layers["elevation"].data, "13_sv_eroded_elevation.png", TERRAIN)
-
-    # 8. watermap
-    WatermapSimulation().execute(world, sub_seeds[2])
-    save_color(world.layers["watermap"].data, "14_sv_watermap.png", WATERMAP)
-
-    # 9. irrigation
-    IrrigationSimulation().execute(world, sub_seeds[3])
-    save_color(world.layers["irrigation"].data, "15_sv_irrigation.png", PRECIPITATION)
-
-    # 10. humidity
-    HumiditySimulation().execute(world, sub_seeds[5])
-    save_color(world.layers["humidity"].data, "16_sv_humidity.png", HUMIDITY)
-
-    # 11. permeability
-    PermeabilitySimulation().execute(world, sub_seeds[6])
-    save_color(world.layers["permeability"].data, "17_sv_permeability.png", PERMEABILITY)
-
-    # 12. biome
-    BiomeSimulation().execute(world, sub_seeds[7])
-    save_biome(world, "18_sv_biome.png")
-
-    # 13. icecap
-    IcecapSimulation().execute(world, sub_seeds[8])
-    save_color(world.layers["icecap"].data, "19_sv_icecap.png", ICECAP)
+    # also save raw arrays for downstream use
+    numpy.save(os.path.join(OUT, "elevation.npy"), elev)
+    numpy.save(os.path.join(OUT, "temperature.npy"), temp)
+    numpy.save(os.path.join(OUT, "precipitation.npy"), precip)
+    numpy.save(os.path.join(OUT, "land_mask.npy"), land_mask)
 
     print("all stages done")
 

@@ -109,12 +109,13 @@ python3 tools/web_server.py --port 8080
 
 ```
 tools/
-  spherical_voronoi.py        # 域扭曲球面 Voronoi 核心（种子、分区、合并、生长）
   generate_stages_voronoi.py  # 逐阶段生成 19 张彩色 PNG（默认 4096x2048）
-  generate_stages.py          # 旧版 platec 管线（保留未改动）
   web_server.py               # Flask 交互式生成器（API + 前端）
-stage_images/                 # 输出目录：01_sv_*.png ~ 19_sv_*.png + 图集
-worldengine/                  # WorldEngine 底层库（子模块/源码）
+worldengine/
+  spherical_voronoi.py        # 域扭曲球面 Voronoi 核心（种子、分区、合并、生长）
+  plates.py                   # 板块生成入口（调用 spherical_voronoi，无 PyPlatec C 扩展）
+  ...                         # WorldEngine 其余底层库（气候仿真、绘制、序列化等）
+stage_images/                 # 输出目录：01_sv_*.png ~ 19_sv_*.png + 图集 index.html
 ```
 
 ---

@@ -46,13 +46,26 @@ def center_land(world):
 
 def place_oceans_at_map_borders(world):
     """
-    Lower the elevation near the border of the map
+    Lower the elevation near the border of the map.
+
+    The original 20 % border (up to 30 px) created a very visible horizontal
+    "cut" band across continents after center_land().  We now use a much
+    narrower, smoothstep-tapered border (4-8 px) which is enough to guarantee
+    wrapping oceans without slicing through landmasses.
     """
 
-    ocean_border = int(min(30, max(world.width / 5, world.height / 5)))
+    ocean_border = min(8, max(world.width // 128, world.height // 128, 4))
+    if ocean_border < 2:
+        return
+
+    def _smoothstep(t):
+        t = max(0.0, min(1.0, t))
+        return t * t * (3.0 - 2.0 * t)
 
     def place_ocean(x, y, i):
-        world.layers["elevation"].data[y, x] = (world.layers["elevation"].data[y, x] * i) / ocean_border
+        # factor goes 0 at the very edge -> 1 at the inner border
+        factor = _smoothstep(i / (ocean_border - 1.0))
+        world.layers["elevation"].data[y, x] *= factor
 
     for x in range(world.width):
         for i in range(ocean_border):

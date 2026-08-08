@@ -29,14 +29,21 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "PyPlatec==1.4.3",
+    # Plate tectonics are generated analytically by worldengine.spherical_voronoi;
+    # the PyPlatec C extension is no longer required.
     "pypng>=0.20220715.0",
     "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "Pillow>=10.0.0",
     "noise==1.2.2",
     "protobuf>=4.21.0",
 ]
 
 [project.optional-dependencies]
+web = [
+    # tools/web_server.py - interactive browser-based generator
+    "flask>=3.0.0",
+]
 hdf5 = [
     "Cython>=3.0.0",
     "h5py>=3.10.0",

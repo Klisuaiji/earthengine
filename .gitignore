@@ -57,3 +57,25 @@ generator.spec
 /worldengine.sln
 *.pyperf
 *.pylintrc
+
+# ---------------------------------------------------------------------------
+# Project-specific ignores (added for the terrain-diffusion / web-ui fork)
+# ---------------------------------------------------------------------------
+# Private workspace memory and bundled reference models. NEVER commit.
+.workbuddy/
+
+# Recycle-bin used by the local cleanup helper.
+.trash/
+
+# Generated demo / pipeline outputs (keep upstream-tracked stage_images pngs).
+planet_out/
+out_diff/
+planet_test/
+test_dir/
+
+# Misc generated artifacts & caches.
+.verify_backend.py
+*.npy
+*.pid
+.pytest_cache/
+*.log
