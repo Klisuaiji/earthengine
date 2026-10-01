@@ -208,6 +208,8 @@ def parse_args(argv=None):
     ap.add_argument("--n-raw", type=int, default=DEFAULT_N_RAW, help="number of Voronoi micro-plates")
     ap.add_argument("--n-big", type=int, default=DEFAULT_N_BIG, help="number of merged major plates (2 oceanic)")
     ap.add_argument("-o", "--out", default=DEFAULT_OUT, help="output directory for the stage PNGs")
+    ap.add_argument("--no-diffusion", action="store_true",
+                    help="render tectonic stages only (no torch / Terrain Diffusion needed)")
     return ap.parse_args(argv)
 
 
@@ -239,13 +241,16 @@ def main(argv=None):
     save_boundary_types(bnd["boundary_type"], "04_sv_boundary_types.png")
 
     # 5-7. Terrain Diffusion: real elevation + physical climate.
+    if args.no_diffusion:
+        print("skipping diffusion stages (--no-diffusion); tectonic stages complete")
+        return
     print("building diffusion pipeline ...")
-    pipe = build_pipeline(seed=seed, device="cuda")
+    pipe = build_pipeline(seed=seed, device="auto")
     print("injecting Voronoi coarse conditioning ...")
     grid = conditioning_from_mask(land_mask)
     pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=-8000.0)
     print(f"generating diffusion elevation {w}x{h} ...")
-    elev, climate_raw = generate_diffusion_world(pipe, w, h, tile=256, device="cuda")
+    elev, climate_raw = generate_diffusion_world(pipe, w, h, tile=256, device="auto")
     pipe.close()
     elev = clamp_land_sea(elev, land_mask)
     temp, precip = compute_physical_climate(elev, h, w)

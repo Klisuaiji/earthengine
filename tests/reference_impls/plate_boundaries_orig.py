@@ -26,17 +26,6 @@ character purely from *topology*:
 The result is a self-consistent, earth-like distribution (~50/50 growth vs
 subduction) with no transform class, exactly as in the reference.
 
-Implementation note
--------------------
-The per-cell stages (boundary detection, corner-lattice junctions, pair keys,
-arc flood fill, write-back, ring thickening) are vectorised with NumPy (+ SciPy
-``connected_components`` for the arc flood fill).  The output is bit-identical
-to the former pure-Python loop implementation: arc ids keep the reference's
-BFS discovery order (ascending minimum cell index), and junction voting /
-thickening keep the original processing order.  The junction-level and
-arc-level stages (voting, balancing, constraint repair) stay in Python - they
-only touch the (few) junction cells and arcs, never the whole map.
-
 Codes (kept compatible with downstream tools)
 ---------------------------------------------
 * ``0`` = interior
@@ -50,7 +39,7 @@ The returned arrays carry one value per pixel:
 * ``boundary_dist``   : (h, w) float32 distance to nearest boundary
 * ``convergent_dist`` : (h, w) float32 distance to nearest convergent boundary
 * ``divergent_dist``  : (h, w) float32 distance to nearest divergent boundary
-* ``transform_dist``  : (h, w) float32 all +inf (reserved)
+* ``transform_dist``  : (h, w) float32 all -inf (reserved)
 * ``boundary_main``   : (h, w) int8   the two longest arcs (main chains)
 * ``junction_mask``   : (h, w) int8   1 on triple-junction cells
 * ``junctions``       : dict cell_idx -> list of incident arc ids (true triples)
@@ -94,11 +83,6 @@ def _hash2(ix: int, iy: int, seed: int) -> float:
     return h / 2147483647.0
 
 
-def _horizontal_diff(m: numpy.ndarray) -> numpy.ndarray:
-    """Cells whose left or right (wrapping) neighbour differs."""
-    return (m != numpy.roll(m, -1, axis=1)) | (m != numpy.roll(m, 1, axis=1))
-
-
 def classify_boundaries(
     merged: numpy.ndarray,
     seed: int,
@@ -126,77 +110,144 @@ def classify_boundaries(
     ``junctions``, ``junction_count``, ``is_ocean``, ``plate_velocity``.
     """
     h, w = merged.shape
-    m = merged.astype(numpy.int32)
+    pid = merged.astype(numpy.int32).reshape(-1).tolist()
     npl = int(merged.max()) + 1
     if is_ocean is None:
         is_ocean = [PLATE_OCEAN[i] if i < len(PLATE_OCEAN) else 0
                     for i in range(npl)]
 
     # ===================== 1. Boundary cells =====================
-    # right/left neighbours wrap around x; up/down are bounded (like the
-    # reference: up = y+1 guarded by up < h, dn = y-1 guarded by dn >= 0).
-    is_bnd = _horizontal_diff(m)
-    if h > 1:
-        is_bnd[:-1] |= m[:-1] != m[1:]
-        is_bnd[1:] |= m[1:] != m[:-1]
+    is_bnd = [0] * (w * h)
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            idx = row + x
+            p = pid[idx]
+            rx = (x + 1) % w
+            lx = (x - 1 + w) % w
+            up = y + 1
+            dn = y - 1
+            diff = False
+            if pid[row + rx] != p:
+                diff = True
+            elif pid[row + lx] != p:
+                diff = True
+            elif up < h and pid[up * w + x] != p:
+                diff = True
+            elif dn >= 0 and pid[dn * w + x] != p:
+                diff = True
+            if diff:
+                is_bnd[idx] = 1
 
     # ===================== 2. Corner-lattice triple junctions =====================
-    # Distinct plate count in each 2x2 corner block >= 3.
-    is_jcor = numpy.zeros((h, w), dtype=bool)
-    if h > 1:
-        A = m[:-1]
-        B = numpy.roll(m[:-1], -1, axis=1)
-        C = m[1:]
-        D = numpy.roll(m[1:], -1, axis=1)
-        s = 1 + (B != A) + ((C != A) & (C != B)) + ((D != A) & (D != B) & (D != C))
-        is_jcor[:-1] = s >= 3
+    is_jcor = [0] * (w * (h - 1))
+    for cy in range(h - 1):
+        row = cy * w
+        nrow = (cy + 1) * w
+        for cx in range(w):
+            A = pid[row + cx]
+            B = pid[row + ((cx + 1) % w)]
+            C = pid[nrow + cx]
+            D = pid[nrow + ((cx + 1) % w)]
+            s = 1
+            if B != A:
+                s += 1
+            if C != A and C != B:
+                s += 1
+            if D != A and D != B and D != C:
+                s += 1
+            if s >= 3:
+                is_jcor[row + cx] = 1
 
     # ===================== 3. Corner -> 4 surrounding cells =====================
-    is_jcell = numpy.zeros((h, w), dtype=bool)
-    if h > 1:
-        jy, jx = numpy.nonzero(is_jcor[:-1])
-        is_jcell[jy, jx] = True
-        is_jcell[jy, (jx + 1) % w] = True
-        is_jcell[jy + 1, jx] = True
-        is_jcell[jy + 1, (jx + 1) % w] = True
+    is_jcell = [0] * (w * h)
+    for cy in range(h - 1):
+        row = cy * w
+        nrow = (cy + 1) * w
+        for cx in range(w):
+            if is_jcor[row + cx] == 1:
+                is_jcell[row + cx] = 1
+                is_jcell[row + ((cx + 1) % w)] = 1
+                is_jcell[nrow + cx] = 1
+                is_jcell[nrow + ((cx + 1) % w)] = 1
 
     # ===================== 4. Per-cell plate-pair key (fork detection) =====================
-    # A boundary cell joins an arc only when *all* of its differing neighbours
-    # bound the same plate pair (min*npl+max key).  Any disagreement -> -1.
-    n_r = numpy.roll(m, -1, axis=1)
-    n_l = numpy.roll(m, 1, axis=1)
-    n_dn = numpy.zeros_like(m)   # neighbour at y-1
-    n_up = numpy.zeros_like(m)   # neighbour at y+1
-    if h > 1:
-        n_up[:-1] = m[1:]
-        n_dn[1:] = m[:-1]
-    v_up = numpy.zeros((h, w), dtype=bool); v_up[:-1] = True
-    v_dn = numpy.zeros((h, w), dtype=bool); v_dn[1:] = True
+    pair_key = [-1] * (w * h)
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            idx = row + x
+            if is_bnd[idx] == 0:
+                continue
+            p = pid[idx]
+            rx = (x + 1) % w
+            lx = (x - 1 + w) % w
+            up = y + 1
+            dn = y - 1
+            pk = -1
+            ok = True
+            np_r = pid[row + rx]
+            if np_r != p:
+                pk = min(p, np_r) * npl + max(p, np_r)
+            if up < h:
+                np_u = pid[up * w + x]
+                if np_u != p:
+                    kk = min(p, np_u) * npl + max(p, np_u)
+                    if pk == -1:
+                        pk = kk
+                    elif pk != kk:
+                        ok = False
+            if dn >= 0:
+                np_d = pid[dn * w + x]
+                if np_d != p:
+                    kk = min(p, np_d) * npl + max(p, np_d)
+                    if pk == -1:
+                        pk = kk
+                    elif pk != kk:
+                        ok = False
+            np_l = pid[row + lx]
+            if np_l != p:
+                kk = min(p, np_l) * npl + max(p, np_l)
+                if pk == -1:
+                    pk = kk
+                elif pk != kk:
+                    ok = False
+            if ok and pk != -1:
+                pair_key[idx] = pk
 
-    def _pair(a, b):
-        lo = numpy.minimum(a, b).astype(numpy.int64)
-        hi = numpy.maximum(a, b).astype(numpy.int64)
-        return lo * npl + hi
-
-    pk = numpy.full((h, w), -1, dtype=numpy.int64)
-    ok = numpy.ones((h, w), dtype=bool)
-    # direction order matches the reference (right, up, down, left); the
-    # outcome is order-independent but keep it for clarity.
-    for valid, nk in ((numpy.ones((h, w), dtype=bool), n_r),
-                      (v_up, n_up), (v_dn, n_dn),
-                      (numpy.ones((h, w), dtype=bool), n_l)):
-        kk = _pair(m, nk)
-        diff = valid & (m != nk)
-        newly = diff & (pk < 0)
-        ok &= ~(diff & (pk >= 0) & (kk != pk))
-        pk = numpy.where(newly, kk, pk)
-    pair_key = numpy.where(ok & (pk >= 0), pk, numpy.int64(-1))
     # Triple-junction cells are forced to break the arc run.
-    pair_key[is_jcell] = -1
+    for jk in range(w * h):
+        if is_jcell[jk] == 1:
+            pair_key[jk] = -1
 
     # ===================== 5. Flood-fill decompose arcs =====================
-    arc_of_flat, arc_cells = _flood_fill_arcs(pair_key, h, w)
-    n_arcs = len(arc_cells)
+    arc_of = [-1] * (w * h)
+    arc_cells = []
+    comp_id = 0
+    for i in range(w * h):
+        if pair_key[i] < 0 or arc_of[i] >= 0:
+            continue
+        apk = pair_key[i]
+        stack = [i]
+        arc_of[i] = comp_id
+        cells = [i]
+        while stack:
+            cur = stack.pop()
+            cx = cur % w
+            cy = cur // w
+            dirs = [((cx + 1) % w, cy), ((cx - 1 + w) % w, cy),
+                    (cx, cy + 1), (cx, cy - 1)]
+            for (nx, ny) in dirs:
+                if ny < 0 or ny >= h:
+                    continue
+                ni = ny * w + nx
+                if pair_key[ni] == apk and arc_of[ni] < 0:
+                    arc_of[ni] = comp_id
+                    cells.append(ni)
+                    stack.append(ni)
+        arc_cells.append(cells)
+        comp_id += 1
+    n_arcs = comp_id
 
     # ===================== 6. Incident arcs at junctions (classification) =====
     # Faithful to world_gen.py: collect arc_of from the 4 orthogonal neighbours
@@ -206,8 +257,9 @@ def classify_boundaries(
     # balancing (step 8) - exactly as in the reference.  (Triple-junction
     # *detection* for analysis uses a wider neighbourhood below.)
     jarcs = {}
-    for jk in numpy.nonzero(is_jcell.reshape(-1))[0]:
-        jk = int(jk)
+    for jk in range(w * h):
+        if is_jcell[jk] == 0:
+            continue
         jx = jk % w
         jy = jk // w
         dirs = [((jx + 1) % w, jy), ((jx - 1 + w) % w, jy),
@@ -217,7 +269,7 @@ def classify_boundaries(
             if ny < 0 or ny >= h:
                 continue
             ni = ny * w + nx
-            a = int(arc_of_flat[ni])
+            a = arc_of[ni]
             if a >= 0:
                 seen.add(a)
         jarcs[jk] = list(seen)
@@ -261,22 +313,21 @@ def classify_boundaries(
         ext_len += flipL
 
     # ===================== 8.5 Constraint repair: every plate has both types =====================
-    pid_flat = m.reshape(-1)
     arc_plates = []
     for si in range(n_arcs):
-        cells = arc_cells[si]
         pl_set = set()
-        for v in pid_flat[cells]:
-            pl_set.add(int(v))
+        cells = arc_cells[si]
+        for ci in range(len(cells)):
+            pl_set.add(pid[cells[ci]])
         arc_plates.append(list(pl_set))
     pblue = [0] * npl
     pred = [0] * npl
     for si in range(n_arcs):
-        for pk_plate in arc_plates[si]:
+        for pk in arc_plates[si]:
             if arc_type[si] == 1:
-                pblue[pk_plate] += 1
+                pblue[pk] += 1
             else:
-                pred[pk_plate] += 1
+                pred[pk] += 1
     guard2 = 0
     while guard2 < 50:
         guard2 += 1
@@ -343,76 +394,47 @@ def classify_boundaries(
         main[best2] = 1
 
     # ===================== 10. Write back boundary_type / junction_mask / main =====================
-    bt_ref_flat = numpy.zeros(w * h, dtype=numpy.int8)
-    main_flat = numpy.zeros(w * h, dtype=numpy.int8)
-    if n_arcs:
-        lens = [len(c) for c in arc_cells]
-        cells_cat = numpy.concatenate(arc_cells)
-        bt_ref_flat[cells_cat] = numpy.repeat(numpy.asarray(arc_type, dtype=numpy.int8), lens)
-        main_flat[cells_cat] = numpy.repeat(numpy.asarray(main, dtype=numpy.int8), lens)
-    junction_mask_flat = numpy.zeros(w * h, dtype=numpy.int8)
+    boundary_type = [0] * (w * h)
+    boundary_main = [0] * (w * h)
+    junction_mask = [0] * (w * h)
+    for si in range(n_arcs):
+        cells = arc_cells[si]
+        for ci in range(len(cells)):
+            boundary_type[cells[ci]] = arc_type[si]
+            if main[si] == 1:
+                boundary_main[cells[ci]] = 1
     for jk, inc in jarcs.items():
-        junction_mask_flat[jk] = 1
+        junction_mask[jk] = 1
         red = False
-        mk = False
+        m = False
         for si in inc:
             if arc_type[si] == 2:
                 red = True
             if main[si] == 1:
-                mk = True
-        bt_ref_flat[jk] = 2 if red else 1
-        if mk:
-            main_flat[jk] = 1
+                m = True
+        boundary_type[jk] = 2 if red else 1
+        if m:
+            boundary_main[jk] = 1
 
     # ===================== 11. Light thickening (1 ring) =====================
-    # Snapshot semantics of the reference loop: the source cells are visited in
-    # raster order and each pushes its value onto its interior neighbours, so
-    # for every target cell the *largest source index* wins.  Horizontal
-    # wrapping makes that winning index column-dependent (the left neighbour of
-    # x=0 is w-1, the right neighbour of x=w-1 is 0), hence explicit source
-    # index arrays instead of a fixed direction order.
-    src_bt = bt_ref_flat.reshape(h, w)
-    src_mn = main_flat.reshape(h, w)
-    out_bt = src_bt.copy()
-    out_mn = src_mn.copy()
-
-    def _shift_y(arr, down):
-        out = numpy.zeros_like(arr)
-        if down:      # neighbour at y+1, invalid on the last row
-            out[:-1] = arr[1:]
-        else:         # neighbour at y-1, invalid on the first row
-            out[1:] = arr[:-1]
-        return out
-
-    idx = numpy.arange(w * h, dtype=numpy.int64).reshape(h, w)
-    src_right = numpy.empty((h, w), dtype=numpy.int64)
-    src_right[:, :w - 1] = idx[:, 1:]
-    if w > 1:
-        src_right[:, w - 1] = idx[:, w - 1] + 1 - w
-    src_left = numpy.empty((h, w), dtype=numpy.int64)
-    src_left[:, 1:] = idx[:, :-1]
-    if w > 1:
-        src_left[:, 0] = idx[:, 0] - 1 + w
-    else:
-        src_left[:, 0] = idx[:, 0]  # self-loop: neighbour == cell itself, never a boundary push
-
-    interior = (src_bt == 0) & (~is_jcell)
-    cand_idx = numpy.full((h, w), -1, dtype=numpy.int64)
-    mn_or = numpy.zeros((h, w), dtype=numpy.int8)
-    for s_idx, nbt, nmn in (
-        (src_right, numpy.roll(src_bt, -1, axis=1), numpy.roll(src_mn, -1, axis=1)),
-        (src_left, numpy.roll(src_bt, 1, axis=1), numpy.roll(src_mn, 1, axis=1)),
-        (idx + w, _shift_y(src_bt, True), _shift_y(src_mn, True)),
-        (idx - w, _shift_y(src_bt, False), _shift_y(src_mn, False)),
-    ):
-        take = interior & (nbt != 0) & (s_idx > cand_idx)
-        out_bt[take] = nbt[take]
-        cand_idx[take] = s_idx[take]
-        # boundary_main uses sticky OR semantics in the reference: it is only
-        # ever written *to 1* (`if boundary_main[i] == 1: boundary_main[ni] = 1`),
-        # so a target is 1 when ANY boundary neighbour is a main chain.
-        mn_or = numpy.maximum(mn_or, nmn)
-    out_mn[interior & (mn_or != 0)] = 1
+    src = list(boundary_type)
+    for i in range(w * h):
+        bt = src[i]
+        if bt == 0:
+            continue
+        x = i % w
+        y = i // w
+        neigh4 = [((x + 1) % w, y), ((x - 1 + w) % w, y), (x, y + 1), (x, y - 1)]
+        for (nx, ny) in neigh4:
+            if ny < 0 or ny >= h:
+                continue
+            ni = ny * w + nx
+            if is_jcell[ni] == 1:
+                continue
+            if src[ni] == 0:
+                boundary_type[ni] = bt
+                if boundary_main[i] == 1:
+                    boundary_main[ni] = 1
 
     # ===================== 11.5 Triple-junction *detection* (analysis only) ============
     # Independent of the classification above: a wide neighbourhood (the whole
@@ -421,10 +443,10 @@ def classify_boundaries(
     # arcs) are captured here.  These are returned in ``junctions`` for the
     # topology analysis and never influence the boundary-type assignment.
     junctions = {}
-    if h > 1:
-        for cy, cx in numpy.argwhere(is_jcor[:-1]):
-            cy = int(cy)
-            cx = int(cx)
+    for cy in range(h - 1):
+        for cx in range(w):
+            if is_jcor[cy * w + cx] == 0:
+                continue
             seen = set()
             block = [(cx, cy), ((cx + 1) % w, cy),
                      (cx, cy + 1), ((cx + 1) % w, cy + 1)]
@@ -435,30 +457,36 @@ def classify_boundaries(
                     if ny < 0 or ny >= h:
                         continue
                     ni = ny * w + nx
-                    a = int(arc_of_flat[ni])
+                    a = arc_of[ni]
                     if a >= 0:
                         seen.add(a)
             if len(seen) >= 3:
                 for (bx, by) in block:
                     cell_idx = by * w + bx
-                    if is_jcell[by, bx]:
+                    if is_jcell[cell_idx] == 1:
                         junctions[cell_idx] = list(seen)
     junction_count = len(junctions)
 
     # ===================== 12. Remap reference codes -> project codes =====================
     # reference: 1 = growth, 2 = subduction, 0 = interior
     # project  : DIVERGENT=2, CONVERGENT=1
+    bt_ref = numpy.array(boundary_type, dtype=numpy.int8).reshape(h, w)
     out = numpy.zeros((h, w), dtype=numpy.int8)
-    out[out_bt == 1] = DIVERGENT
-    out[out_bt == 2] = CONVERGENT
+    out[bt_ref == 1] = DIVERGENT
+    out[bt_ref == 2] = CONVERGENT
 
-    is_bnd_np = is_bnd
+    boundary_main_np = numpy.array(boundary_main, dtype=numpy.int8).reshape(h, w)
+    junction_mask_np = numpy.array(junction_mask, dtype=numpy.int8).reshape(h, w)
+    is_bnd_np = numpy.array(is_bnd, dtype=bool).reshape(h, w)
 
     # ===================== 13. Distance maps =====================
     boundary_dist = _distance_to(is_bnd_np, h, w)
     convergent_dist = _distance_to(out == CONVERGENT, h, w)
     divergent_dist = _distance_to(out == DIVERGENT, h, w)
-    transform_dist = numpy.full((h, w), numpy.inf, dtype=numpy.float32)
+    transform_dist = numpy.full((h, w), -1.0, dtype=numpy.float32)
+    transform_dist[transform_dist < 0] = numpy.inf
+
+    # junctions / junction_count already computed in step 11.5 (wide detection).
 
     return {
         "boundary_type": out,
@@ -466,113 +494,13 @@ def classify_boundaries(
         "convergent_dist": convergent_dist,
         "divergent_dist": divergent_dist,
         "transform_dist": transform_dist,
-        "boundary_main": out_mn.astype(numpy.int8),
-        "junction_mask": junction_mask_flat.reshape(h, w),
+        "boundary_main": boundary_main_np,
+        "junction_mask": junction_mask_np,
         "junctions": junctions,
         "junction_count": junction_count,
         "is_ocean": numpy.array(is_ocean, dtype=numpy.int8),
         "plate_velocity": None,
     }
-
-
-def _flood_fill_arcs(pair_key: numpy.ndarray, h: int, w: int):
-    """Group boundary cells into arcs: 4-connected cells sharing one pair key.
-
-    Returns ``(arc_of_flat, arc_cells)`` where ``arc_of_flat`` maps every flat
-    cell index to its arc id (-1 = not an arc cell) and ``arc_cells[si]`` is the
-    (sorted) flat cell indices of arc ``si``.
-
-    Arc ids follow the reference BFS discovery order (an arc is numbered by the
-    rank of its minimum cell index), so junction voting reproduces the pure
-    Python implementation bit-for-bit.  Falls back to the reference BFS loop
-    when SciPy is unavailable.
-    """
-    mask = pair_key >= 0
-    if not mask.any():
-        return numpy.full(h * w, -1, dtype=numpy.int32), []
-    try:
-        cells = numpy.nonzero(mask.reshape(-1))[0]
-        keys = pair_key.reshape(-1)[cells]
-        n = cells.size
-
-        # Edges between 4-adjacent cells with the same pair key.  Horizontal
-        # neighbours wrap (like the reference flood fill), vertical do not.
-        pos = numpy.full(h * w, -1, dtype=numpy.int64)
-        pos[cells] = numpy.arange(n, dtype=numpy.int64)
-        y = cells // w
-        x = cells % w
-        key_flat = pair_key.reshape(-1)
-
-        n_r = y * w + (x + 1) % w
-        same_r = key_flat[n_r] == keys
-        n_d = cells + w
-        valid_d = (y + 1) < h
-        same_d = numpy.zeros(n, dtype=bool)
-        if h > 1:
-            same_d[valid_d] = key_flat[n_d[valid_d]] == keys[valid_d]
-
-        ei = numpy.concatenate([numpy.nonzero(same_r)[0], numpy.nonzero(same_d)[0]])
-        ej = numpy.concatenate([pos[n_r[same_r]], pos[n_d[same_d]]])
-
-        from scipy.sparse import coo_matrix
-        from scipy.sparse.csgraph import connected_components
-
-        graph = coo_matrix((numpy.ones(ei.size, dtype=numpy.int8), (ei, ej)),
-                           shape=(n, n))
-        n_comp, labels = connected_components(graph, directed=False)
-
-        # Renumber: arc id = rank of the arc's minimum cell index (this equals
-        # the reference's raster-order BFS discovery numbering).
-        first = numpy.full(max(n_comp, 1), n, dtype=numpy.int64)
-        numpy.minimum.at(first, labels, numpy.arange(n, dtype=numpy.int64))
-        order = numpy.argsort(first, kind="stable")
-        rank = numpy.empty(n_comp, dtype=numpy.int64)
-        rank[order] = numpy.arange(n_comp, dtype=numpy.int64)
-
-        arc_of_flat = numpy.full(h * w, -1, dtype=numpy.int32)
-        arc_of_flat[cells] = rank[labels].astype(numpy.int32)
-
-        arc_rank = rank[labels]
-        sort_idx = numpy.lexsort((cells, arc_rank))
-        sorted_rank = arc_rank[sort_idx]
-        change = numpy.nonzero(numpy.diff(sorted_rank))[0] + 1
-        arc_cells = [numpy.sort(cells[g]) for g in numpy.split(sort_idx, change)]
-        return arc_of_flat, arc_cells
-    except ImportError:
-        return _flood_fill_arcs_python(pair_key, h, w)
-
-
-def _flood_fill_arcs_python(pair_key: numpy.ndarray, h: int, w: int):
-    """Reference iterative flood fill (fallback when SciPy is unavailable)."""
-    keys = pair_key.reshape(-1).tolist()
-    arc_of = [-1] * (w * h)
-    arc_cells = []
-    comp_id = 0
-    for i in range(w * h):
-        if keys[i] < 0 or arc_of[i] >= 0:
-            continue
-        apk = keys[i]
-        stack = [i]
-        arc_of[i] = comp_id
-        cells = [i]
-        while stack:
-            cur = stack.pop()
-            cx = cur % w
-            cy = cur // w
-            dirs = [((cx + 1) % w, cy), ((cx - 1 + w) % w, cy),
-                    (cx, cy + 1), (cx, cy - 1)]
-            for (nx, ny) in dirs:
-                if ny < 0 or ny >= h:
-                    continue
-                ni = ny * w + nx
-                if keys[ni] == apk and arc_of[ni] < 0:
-                    arc_of[ni] = comp_id
-                    cells.append(ni)
-                    stack.append(ni)
-        cells.sort()
-        arc_cells.append(numpy.asarray(cells, dtype=numpy.int64))
-        comp_id += 1
-    return numpy.asarray(arc_of, dtype=numpy.int32), arc_cells
 
 
 def _distance_to(mask: numpy.ndarray, h: int, w: int) -> numpy.ndarray:

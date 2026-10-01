@@ -160,9 +160,16 @@ run_server.bat                # Windows 一键启动 Web 服务
 
 ## 已知限制 / Known Limitations
 
-- 扩散地形当前依赖 `envs/default` venv 中的 torch / numba；使用其它无该依赖的解释器会报 `ModuleNotFoundError: numba`。
+- **设备自动选择 / Device auto-detection**：所有 CUDA 相关入口（`tools/generate_planet.py`、`tools/diffusion_world.py`、Web 服务）默认 `--device auto`——有可用 GPU 时自动走 CUDA，否则回退 CPU；显式传 `--device cpu` 可强制 CPU。 / All CUDA entry points default to `--device auto`: CUDA is used when a GPU is available, otherwise the pipeline falls back to CPU.
+- 扩散地形当前依赖 `envs/default` venv 中的 torch / numba。torch 缺失时纯构造阶段仍可运行：`python tools/generate_stages_voronoi.py --no-diffusion`，且 `tools/web_server.py` 启动时会对缺失依赖给出明确提示。 / Without torch, the tectonic-only stages still run (`--no-diffusion`) and the web server reports missing dependencies clearly instead of crashing.
 - 扩散模型的原生气候通道需要 rasterio + WorldClim 统计文件；缺失时温度/降水由物理模型替代。
 - 高分辨率（≥ 2048×1024）的多瓦片扩散尚未充分验证，当前稳定配置为 1024×512。
+
+### 性能 / Performance
+
+- `worldengine/plate_boundaries.py` 的逐像素分类已向量化（NumPy + SciPy `connected_components`），输出与原纯 Python 实现逐位一致；4096×2048 下从数分钟级降至 ~3 s（约 100×）。
+- `worldengine/spherical_voronoi.py` 缓存松弛迭代间不变的角距场（内存预算内）、LUT 散射合并板块、bincount 统计组件面积；1024×512 全流程约 2.3× 加速，输出逐位一致。
+- `tools/planet_pipeline.py` 气候/生态阶段的逐像素循环改为唯一标签查表。
 
 ---
 

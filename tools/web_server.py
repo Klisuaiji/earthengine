@@ -33,7 +33,6 @@ for _p in (str(ROOT), str(ROOT / "tools")):
 
 from worldengine.spherical_voronoi import (
     generate_spherical_world,
-    remove_enclaves,
 )
 from worldengine.plate_boundaries import (
     INTERIOR, CONVERGENT, DIVERGENT, TRANSFORM, classify_boundaries,
@@ -54,6 +53,7 @@ from tools.diffusion_world import (
 # and the coarse conditioning store.
 _PIPE = None
 _PIPE_SEED = None
+_PIPE_DEVICE = None
 
 app = Flask(__name__)
 # Preserve insertion (pipeline) order in JSON responses instead of alphabetical
@@ -132,12 +132,15 @@ def simple_koppen(temp, precip, elev):
 
 
 
-def _get_cached_pipeline(seed, device="cuda"):
+def _get_cached_pipeline(seed, device="auto"):
     """Return a diffusion pipeline, loading it once at first request."""
-    global _PIPE, _PIPE_SEED
+    global _PIPE, _PIPE_SEED, _PIPE_DEVICE
+    from diffusion_world import resolve_device
+    device = resolve_device(device)
     if _PIPE is None:
         _PIPE = build_pipeline(seed=seed, device=device)
         _PIPE_SEED = seed
+        _PIPE_DEVICE = device
     # If the requested seed changed, update it (rebuild is cheap once models are loaded).
     if _PIPE_SEED != seed:
         _PIPE.seed = seed
@@ -230,7 +233,8 @@ def generate_world(params):
     raw, merged, land_mask, continent_mask = generate_spherical_world(
         seed, w=w, h=h, n_raw=n_raw, n_big=n_big
     )
-    merged = remove_enclaves(merged, min_frac=0.0005)
+    # generate_spherical_world already absorbs tiny enclaves (min_frac=0.0005);
+    # a second pass would be a no-op, so skip it.
     t_voronoi = time.time() - t0
     bnd = classify_boundaries(merged, seed=seed)   # needed by coastal refinement
 
@@ -248,7 +252,7 @@ def generate_world(params):
     coarse_elev = tectonic_coarse_elevation(land_mask, bnd)
     grid = coarse_conditioning_grid(coarse_elev, land_mask)
     pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=-8000.0)
-    elev, _ = generate_diffusion_world(pipe, w, h, tile=256, device="cuda")
+    elev, _ = generate_diffusion_world(pipe, w, h, tile=256, device=_PIPE_DEVICE or "auto")
     elev = clamp_land_sea(elev, land_mask)
     # Reuse planet_pipeline's VERIFIED post-processing so the land gets coherent
     # fractal interior relief (and a fractal coastline + archipelago bumps)
@@ -380,210 +384,6 @@ def generate_world(params):
 
 # --------------- Flask routes ---------------
 
-INDEX_HTML = r"""<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WorldEngine Voronoi + Terrain Diffusion - 交互式世界生成</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh}
-.header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;align-items:center;gap:16px}
-.header h1{font-size:18px;color:#f0f6fc}
-.header .sub{font-size:13px;color:#8b949e}
-.layout{display:flex;height:calc(100vh - 60px)}
-.sidebar{width:320px;background:#161b22;border-right:1px solid #30363d;padding:16px;overflow-y:auto;flex-shrink:0}
-.sidebar h2{font-size:14px;color:#8b949e;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
-.form-group{margin-bottom:14px}
-.form-group label{display:block;font-size:13px;color:#c9d1d9;margin-bottom:4px}
-.form-group input,.form-group select{width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:14px;font-family:inherit}
-.form-group input:focus,.form-group select:focus{outline:none;border-color:#58a6ff}
-.form-group input[type=range]{padding:0;height:6px;-webkit-appearance:none;background:#30363d;border-radius:3px;cursor:pointer}
-.form-group input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#58a6ff}
-.form-group .range-val{font-size:12px;color:#8b949e;float:right;margin-top:2px}
-.btn{width:100%;padding:10px 16px;background:#238636;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer}
-.btn:hover{background:#2ea043}
-.btn:disabled{background:#30363d;color:#8b949e;cursor:not-allowed}
-.main{flex:1;overflow-y:auto;padding:24px}
-.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-.stat-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 16px;min-width:100px}
-.stat-card .val{font-size:22px;font-weight:700;color:#58a6ff}
-.stat-card .lbl{font-size:12px;color:#8b949e}
-.images{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-.img-card{background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
-.img-card img{width:100%;display:block;image-rendering:pixelated}
-.img-card .cap{display:flex;flex-direction:column;gap:3px;padding:10px 12px;font-size:13px;color:#8b949e}
-.img-card .cap b{color:#c9d1d9;font-size:13px;font-weight:600}
-.img-card .cap span{font-size:11px;color:#6e7681;line-height:1.4}
-.sec{margin-bottom:26px}
-.sec-head{display:flex;align-items:baseline;gap:12px;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #30363d}
-.sec-head h3{font-size:15px;color:#58a6ff;font-weight:600;margin:0}
-.sec-head span{font-size:12px;color:#8b949e}
-.loading{text-align:center;padding:40px;color:#8b949e}
-.spinner{display:inline-block;width:32px;height:32px;border:3px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin 1s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.error{color:#f85149;font-size:13px;margin-top:8px}
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>WorldEngine &#8226; 球面 Voronoi + Terrain Diffusion</h1>
-  <span class="sub">交互式世界地图生成器 &#8226; 构造骨架 + 扩散真实地形 + 物理气候</span>
-</div>
-<div class="layout">
-  <div class="sidebar">
-    <h2>参数</h2>
-    <div class="form-group">
-      <label>Seed</label>
-      <input type="number" id="seed" value="1234567" min="1">
-    </div>
-    <div class="form-group">
-      <label>图像尺寸</label>
-      <select id="size">
-        <option value="256x256">256 x 256</option>
-        <option value="512x512">512 x 512</option>
-        <option value="1024x512" selected>1024 x 512</option>
-        <option value="1024x1024">1024 x 1024</option>
-        <option value="2048x1024">2048 x 1024</option>
-        <option value="4096x2048">4096 x 2048</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>微板块数 (n_raw)</label>
-      <input type="range" id="n_raw" min="10" max="100" value="30" oninput="document.getElementById('n_raw_val').textContent=this.value">
-      <span class="range-val" id="n_raw_val">30</span>
-    </div>
-    <div class="form-group">
-      <label>大板块数 (n_big)</label>
-      <input type="range" id="n_big" min="4" max="10" value="6" oninput="document.getElementById('n_big_val').textContent=this.value">
-      <span class="range-val" id="n_big_val">6</span>
-    </div>
-    <div class="form-group">
-      <label>域扭曲幅度 (domain_amp)</label>
-      <input type="range" id="domain_amp" min="0" max="50" value="22" oninput="document.getElementById('amp_val').textContent=(this.value/100).toFixed(2)">
-      <span class="range-val" id="amp_val">0.22</span>
-    </div>
-    <button class="btn" id="genBtn" onclick="generate()">生成世界</button>
-    <div class="error" id="error"></div>
-  </div>
-  <div class="main" id="main">
-    <div class="loading" id="initial"><p>点击左侧「生成世界」开始</p></div>
-  </div>
-</div>
-<script>
-async function generate() {
-  const btn = document.getElementById('genBtn');
-  const main = document.getElementById('main');
-  const err = document.getElementById('error');
-  btn.disabled = true;
-  btn.textContent = '生成中...';
-  err.textContent = '';
-  main.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在生成，高分辨率可能需要数分钟...</p></div>';
-
-  const size = document.getElementById('size').value.split('x');
-  const params = {
-    seed: parseInt(document.getElementById('seed').value),
-    width: parseInt(size[0]),
-    height: parseInt(size[1]),
-    n_raw: parseInt(document.getElementById('n_raw').value),
-    n_big: parseInt(document.getElementById('n_big').value),
-    domain_amp: parseFloat(document.getElementById('domain_amp').value) / 100,
-  };
-
-  try {
-    const resp = await fetch('/api/generate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(params)
-    });
-    const data = await resp.json();
-    if (!data.success) {
-      err.textContent = data.error || '未知错误';
-      main.innerHTML = '';
-      btn.disabled = false;
-      btn.textContent = '生成世界';
-      return;
-    }
-
-    const stats = data.stats || {};
-    let statsHtml = '<div class="stats">';
-    statsHtml += `<div class="stat-card"><div class="val">${stats.total_time}s</div><div class="lbl">总耗时</div></div>`;
-    statsHtml += `<div class="stat-card"><div class="val">${stats.raw_plates}</div><div class="lbl">微板块</div></div>`;
-    statsHtml += `<div class="stat-card"><div class="val">${stats.merged_groups}</div><div class="lbl">大板块</div></div>`;
-    statsHtml += `<div class="stat-card"><div class="val">${stats.ocean_pct}%</div><div class="lbl">海洋</div></div>`;
-    statsHtml += `<div class="stat-card"><div class="val">${stats.land_pct}%</div><div class="lbl">陆地</div></div>`;
-    if (stats.diffusion_time !== undefined) {
-      statsHtml += `<div class="stat-card"><div class="val">${stats.diffusion_time}s</div><div class="lbl">扩散推理</div></div>`;
-    }
-    if (stats.elev_max_m !== undefined) {
-      statsHtml += `<div class="stat-card"><div class="val">${stats.elev_max_m}m</div><div class="lbl">最高峰</div></div>`;
-    }
-    for (let g = 0; g < stats.merged_groups; g++) {
-      const k = `group_${g}_area_pct`;
-      if (stats[k] !== undefined) {
-        statsHtml += `<div class="stat-card"><div class="val">${stats[k]}%</div><div class="lbl">板块 ${g}</div></div>`;
-      }
-    }
-    statsHtml += '</div>';
-
-    // 图层元信息：标题 + 一句话说明
-    const layers = {
-      raw_plates:      {label:'原始微板块', desc:'球面 Voronoi 初始划分'},
-      merged:          {label:'合并大板块', desc:'微板块合并为 N 大板块（黑线 = 边界）'},
-      continents:      {label:'生成的大陆', desc:'陆地板块即大陆，海洋板块为海'},
-      boundary_types:  {label:'板块边界',   desc:'生长(绿)/消亡(紫)/平移(橙)'},
-      elevation_relief:{label:'真实地形',   desc:'Terrain Diffusion：山脉、海沟、海陆起伏（颜色+山体阴影）'},
-      temperature:     {label:'温度',       desc:'物理模型：纬度温度带 + 高程递减率 6.5 C/km'},
-      precipitation:   {label:'降水',       desc:'物理模型：ITCZ/西风带 + 地形性迎风坡增强'},
-      ocean_mask:      {label:'海陆掩膜',   desc:'蓝 = 海 · 绿 = 陆'},
-    };
-
-    // 按生成管线分组：板块结构 -> 真实地形 -> 气候 -> 海陆
-    const sections = [
-      { title:'① 板块结构', note:'构造骨架，决定海陆格局', keys:['raw_plates','merged','continents','boundary_types'] },
-      { title:'② 真实地形', note:'扩散模型根据大陆骨架渲染的高程', keys:['elevation_relief'] },
-      { title:'③ 气候',     note:'由真实地形驱动的温度与降水', keys:['temperature','precipitation'] },
-      { title:'④ 海陆掩膜', note:'最终海陆二值掩膜', keys:['ocean_mask'] },
-    ];
-
-    const covered = new Set();
-    let imgsHtml = '';
-    for (const sec of sections) {
-      const keys = sec.keys.filter(k => k in data.images);
-      if (!keys.length) continue;
-      imgsHtml += `<div class="sec"><div class="sec-head"><h3>${sec.title}</h3><span>${sec.note}</span></div><div class="images">`;
-      for (const key of keys) {
-        covered.add(key);
-        const m = layers[key] || {label:key, desc:''};
-        imgsHtml += `<div class="img-card"><img src="data:image/png;base64,${data.images[key]}"><div class="cap"><b>${m.label}</b><span>${m.desc}</span></div></div>`;
-      }
-      imgsHtml += '</div></div>';
-    }
-    // 兜底：任何未归入分组的图层
-    const extras = Object.keys(data.images).filter(k => !covered.has(k));
-    if (extras.length) {
-      imgsHtml += '<div class="sec"><div class="sec-head"><h3>其他</h3></div><div class="images">';
-      for (const key of extras) {
-        const m = layers[key] || {label:key, desc:''};
-        imgsHtml += `<div class="img-card"><img src="data:image/png;base64,${data.images[key]}"><div class="cap"><b>${m.label}</b><span>${m.desc}</span></div></div>`;
-      }
-      imgsHtml += '</div></div>';
-    }
-
-    main.innerHTML = statsHtml + imgsHtml;
-  } catch(e) {
-    err.textContent = '请求失败: ' + e.message;
-    main.innerHTML = '';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '生成世界';
-  }
-}
-</script>
-</body>
-</html>"""
-
 
 @app.route("/")
 def index():
@@ -626,6 +426,7 @@ def api_diagnose():
         info["matplotlib_error"] = f"{type(e).__name__}: {e}"
     # Is the diffusion pipeline already loaded?
     info["pipeline_loaded"] = _PIPE is not None
+    info["resolved_device"] = _PIPE_DEVICE
     return jsonify(info)
 
 
@@ -651,12 +452,14 @@ def main():
         _missing.append("numba")
     if _missing:
         _venv = r"C:/Users/Qq203/.workbuddy/binaries/python/envs/default/Scripts/python.exe"
+        _local_venv = str(ROOT / ".venv-torch" / "Scripts" / "python.exe")
         sys.stderr.write(
             "\n"
             "══════════════════════════════════════════════════════════════\n"
             "  启动失败：当前 Python 解释器缺少依赖 " + ", ".join(_missing) + "\n"
-            "  本服务必须在包含 torch / numba 的 venv 中运行：\n"
+            "  本服务必须在包含 torch / numba 的 venv 中运行，例如：\n"
             "    " + _venv + " tools/web_server.py --port " + str(args.port) + "\n"
+            "    " + _local_venv + " tools/web_server.py --port " + str(args.port) + "\n"
             "  （不要用裸 python / 托管运行时，它们没有这些依赖）\n"
             "══════════════════════════════════════════════════════════════\n\n"
         )

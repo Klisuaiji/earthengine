@@ -3,6 +3,8 @@
 !stage_images/*.png
 
 venv
+.venv/
+.venv-torch/
 *.pyc
 *.py[cod]
 
@@ -79,3 +81,6 @@ test_dir/
 *.pid
 .pytest_cache/
 *.log
+
+# Triple-junction topology analysis outputs (regenerable).
+junction_analysis/

@@ -1,3 +1,15 @@
+Version 0.20.1
+
+* `classify_boundaries` vectorised with NumPy/SciPy; output bit-identical to the pure-Python version, ~100x faster at 4096x2048.
+* Spherical Voronoi: seed-distance field cached across pressure-relaxation iterations, LUT-based plate merging, bincount component areas; full-world generation ~2.3x faster at 1024x512, bit-identical output.
+* `planet_pipeline`: fixed unreachable Köppen `Dfc` class (cold continental land was mislabelled "Ocean"); per-pixel palette/biome loops replaced by unique-label LUT lookups; windowed civilisation-point suppression; removed dead `ice_layer` call.
+* All diffusion entry points now default to `--device auto` (CUDA when available, CPU fallback); explicit `device='cuda'` without an available GPU raises a clear error.
+* `tools/_load_st_chunked.py`: checkpoint repo path resolved relative to the project; `torch.cuda.empty_cache()` guarded on CPU-only machines.
+* torch / numba imports made lazy in `tools/diffusion_world.py` so tectonic-only rendering works without torch (`generate_stages_voronoi.py --no-diffusion`); web server dependency guard now reachable.
+* `tools/analyze_junctions.py`: runnable directly from a project checkout (sys.path fix).
+* `run_server.bat`: falls back to the local `.venv-torch` interpreter when the WorkBuddy environment is absent.
+* CUDA verified end-to-end on RTX 5050 Laptop GPU (sm_120) with torch 2.9.1+cu128: 3 U-Nets loaded to GPU in ~1 s via the chunked loader, 128x128 inference in ~11 s at 1.09 GB VRAM.
+
 Version 0.20
 
 * Calculation of sea depth is now faster.

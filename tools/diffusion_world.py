@@ -29,7 +29,10 @@ Run (from the project root, with the terrain-diffusion venv):
 """
 import os, sys, json, argparse, time
 import numpy as np
-import torch
+
+# NOTE: torch / numba / _load_st_chunked are imported lazily inside the
+# functions that need them, so the torch-free helpers below (rendering,
+# climate, conditioning) keep working in environments without torch.
 
 # ---- paths -------------------------------------------------------------
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,13 +42,29 @@ for p in (TOOLS, REPO, ROOT):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import _load_st_chunked as ld  # meta + chunked GPU loader
-
 # native pixels per conditioning cell (from world_pipeline: S = 32 * scale = 256)
 CELL = 256
 
 
-def build_pipeline(seed=1, cache_limit=128 * 1024 * 1024, device="cuda", snr0=0.5):
+def resolve_device(device="auto"):
+    """Map ``auto`` to the best available torch device (cuda, else cpu).
+
+    An explicit ``device`` is honoured as-is.  Keeps every entry point working
+    on machines without CUDA instead of crashing on a hardcoded ``cuda``.
+    """
+    if device in (None, "auto"):
+        try:
+            import torch
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            return "cpu"
+    return device
+
+
+def build_pipeline(seed=1, cache_limit=128 * 1024 * 1024, device="auto", snr0=0.5):
+    import torch  # noqa: F401  (lazy: only the pipeline needs torch)
+    import _load_st_chunked as ld  # meta + chunked GPU loader
+    device = resolve_device(device)
     with open(os.path.join(REPO, "config.json")) as f:
         cfg = json.load(f)
     kw = dict(
@@ -134,8 +153,11 @@ def conditioning_from_mask(land_mask, land_elev=4000.0, ocean_elev=-8000.0):
     return grid
 
 
-def generate_world(pipe, w, h, tile=256, device="cuda"):
+def generate_world(pipe, w, h, tile=256, device="auto"):
     """Tile the world and collect elevation + climate into full arrays."""
+    import torch
+    device = resolve_device(device)
+    use_cuda = device.startswith("cuda") and torch.cuda.is_available()
     elev = np.zeros((h, w), dtype=np.float32)
     climate = np.zeros((5, h, w), dtype=np.float32)
     n_rows, n_cols = (h + tile - 1) // tile, (w + tile - 1) // tile
@@ -152,7 +174,7 @@ def generate_world(pipe, w, h, tile=256, device="cuda"):
             c = c[:, : y1 - y0, : x1 - x0]
             elev[y0:y1, x0:x1] = e
             climate[:, y0:y1, x0:x1] = c
-            if device == "cuda":
+            if use_cuda:
                 torch.cuda.empty_cache()
     print("  generated %dx%d in %.1fs" % (w, h, time.time() - t0), flush=True)
     return elev, climate
@@ -288,7 +310,7 @@ def main():
     ap.add_argument("--land-elev", type=float, default=4000.0)
     ap.add_argument("--ocean-elev", type=float, default=-8000.0)
     ap.add_argument("--snr0", type=float, default=0.5)
-    ap.add_argument("--device", type=str, default="cuda")
+    ap.add_argument("--device", type=str, default="auto")
     ap.add_argument("--tile", type=int, default=256)
     args = ap.parse_args()
 

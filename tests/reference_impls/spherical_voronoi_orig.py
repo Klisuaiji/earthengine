@@ -234,21 +234,12 @@ def _place_seeds(seed, n_plates):
 
 
 # --------------- Raw plate partition (domain-warped Voronoi, NO detail noise) ---------------
-# Distance-cache budget: the angular-distance field is invariant across
-# pressure-relaxation iterations, so compute it once when it fits in RAM
-# (~256 MB cap) instead of 12x.  Above the cap, fall back to per-iteration
-# chunked recomputation (constant memory, as before).
-_DIST_CACHE_MAX_ELEMS = 64_000_000
-
-
 def _partition_sphere(w, h, seeds, seed, n_plates, target_weights=None):
     """Numpy-batched spherical Voronoi with domain warping and pressure relaxation.
 
-    Seed distances never change during relaxation, so they are computed once
-    and cached when the map fits the distance-cache budget; above the budget
-    they are recomputed per-iteration in row chunks so memory stays bounded
-    even at very high resolutions (4096x2048+).  No sub-centers - with 30+
-    plates, boundaries are already fine-grained.
+    Distances are recomputed per-iteration in row chunks so memory stays
+    bounded even at very high resolutions (4096x2048+).  No sub-centers -
+    with 30+ plates, boundaries are already fine-grained.
     """
     s2 = (seed * 2654435761) & 0x7FFFFFFF
     # Local RNG: the empty-plate donation below must not depend on (or perturb)
@@ -272,33 +263,15 @@ def _partition_sphere(w, h, seeds, seed, n_plates, target_weights=None):
 
     pid = numpy.zeros((h, w), dtype=numpy.int32)
 
-    # The angular distance to every seed never changes during relaxation - only
-    # the per-plate pressure bias does.  Cache the (h, w, n_plates) field once
-    # when it fits in the budget; each iteration then reduces to a cheap
-    # argmin over (distance + pressure).  Bit-identical to recomputing.
-    dist_all = None
-    if h * w * n_plates <= _DIST_CACHE_MAX_ELEMS:
-        dist_all = numpy.empty((h, w, n_plates), dtype=numpy.float32)
+    for _it in range(PARTITION_ITERS):
+        # Recompute distances chunk by chunk (memory bounded, no D_all cache)
         for y0 in range(0, h, chunk_rows):
             y1 = min(y0 + chunk_rows, h)
-            dot = numpy.clip(numpy.tensordot(W[y0:y1], seeds_arr, axes=([2], [1])), -1.0, 1.0)
-            dist_all[y0:y1] = numpy.arccos(dot)
-
-    for _it in range(PARTITION_ITERS):
-        if dist_all is not None:
-            # argmax(-dist - pressure) == argmin(dist + pressure); chunked to
-            # avoid a full (h, w, n_plates) temporary.
-            for y0 in range(0, h, chunk_rows):
-                y1 = min(y0 + chunk_rows, h)
-                pid[y0:y1] = (dist_all[y0:y1] + pressure).argmin(axis=2).astype(numpy.int32)
-        else:
-            for y0 in range(0, h, chunk_rows):
-                y1 = min(y0 + chunk_rows, h)
-                W_chunk = W[y0:y1]  # (chunk, w, 3)
-                dot = numpy.clip(numpy.tensordot(W_chunk, seeds_arr, axes=([2], [1])), -1.0, 1.0)
-                dist = numpy.arccos(dot)
-                score = -dist - pressure[None, None, :]
-                pid[y0:y1] = score.argmax(axis=2).astype(numpy.int32)
+            W_chunk = W[y0:y1]  # (chunk, w, 3)
+            dot = numpy.clip(numpy.tensordot(W_chunk, seeds_arr, axes=([2], [1])), -1.0, 1.0)
+            dist = numpy.arccos(dot)
+            score = -dist - pressure[None, None, :]
+            pid[y0:y1] = score.argmax(axis=2).astype(numpy.int32)
 
         counts = numpy.bincount(pid.ravel(), minlength=n_plates).astype(numpy.float32)
 
@@ -452,11 +425,10 @@ def _grow_continents(pid, ocean_center, n_ocean=2, n_continent=4, target_areas=N
         if p not in assigned:
             assigned[p] = 0
 
-    # Scatter via lookup table: merged[y, x] = assigned[pid[y, x]]
-    lut = numpy.zeros(n_raw, dtype=pid.dtype)
+    merged = numpy.empty_like(pid)
     for p, g in assigned.items():
-        lut[p] = g
-    return lut[pid]
+        merged[pid == p] = g
+    return merged
 
 
 # --------------- Connected components ---------------
@@ -486,14 +458,14 @@ def _cleanup_raw_plates(pid, n_raw):
         lab, n_comp = _label_components(mask)
         if n_comp <= 1:
             continue
-        comp_areas = numpy.bincount(lab.ravel(), minlength=n_comp + 1)
-        largest = 1 + int(comp_areas[1:].argmax())
+        comp_areas = [int((lab == c).sum()) for c in range(1, n_comp + 1)]
+        largest = 1 + comp_areas.index(max(comp_areas))
         min_area = max(int(min_frac * h * w), 8)
         for c in range(1, n_comp + 1):
             if c == largest:
                 continue
-            if int(comp_areas[c]) < min_area:
-                comp = lab == c
+            comp = lab == c
+            if int(comp.sum()) < min_area:
                 ys, xs = numpy.where(comp)
                 neigh = numpy.concatenate(
                     [
@@ -518,10 +490,9 @@ def remove_enclaves(plates, min_frac=0.0005):
     for g in numpy.unique(plates):
         mask = out == g
         lab, n = _label_components(mask)
-        areas = numpy.bincount(lab.ravel(), minlength=n + 1)
         for c in range(1, n + 1):
-            if int(areas[c]) < min_area:
-                comp = lab == c
+            comp = lab == c
+            if int(comp.sum()) < min_area:
                 yy, xx = numpy.nonzero(comp)
                 neigh = numpy.concatenate(
                     [
@@ -606,9 +577,7 @@ def synthesize_elevation(merged, h, w, seed, n_big=6, n_ocean=2, land_mask=None,
         if mask.sum() < 100:
             continue
         dm = _distance_from_boundary(mask)
-        # float64 before the multiply to keep bit-identical rounding with the
-        # former full-map expression `elevation += mask.astype(float) * dm * 5000`.
-        elevation[mask] += dm[mask].astype(numpy.float64) * 5000.0
+        elevation += mask.astype(float) * dm * 5000.0
 
     elevation += noise_a * 1200.0
     elevation += noise_b * 600.0

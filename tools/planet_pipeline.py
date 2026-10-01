@@ -236,9 +236,10 @@ def initial_coloring(coarse_elev):
     return cls
 
 
-def diffusion_refine(grid, seed, w, h, device="cuda", snr0=0.5):
+def diffusion_refine(grid, seed, w, h, device="auto", snr0=0.5):
     """Step 9: run Terrain Diffusion with the coarse conditioning grid."""
-    from diffusion_world import build_pipeline, generate_world
+    from diffusion_world import build_pipeline, generate_world, resolve_device
+    device = resolve_device(device)
     pipe = build_pipeline(seed=seed, device=device, snr0=snr0)
     pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=OCEAN_BASE)
     elev, climate_raw = generate_world(pipe, w, h, tile=256, device=device)
@@ -343,7 +344,10 @@ def koppen(temp, precip, elev, h):
     E = t_warm < 10
     # temperate C: coldest > -3 and warmest > 10 and not tropical/polar
     C = (t_cold > -3) & (t_warm >= 10) & ~A & ~E
-    D = (~A) & (~E) & (~C) & (t_warm >= 10)
+    # boreal/continental D: everything temperate-cold that is not C.  (Do NOT
+    # add `t_warm >= 10` here - it made the Dfc branch below unreachable and
+    # mislabelled cold continental land as "Ocean".)
+    D = (~A) & (~E) & (~C)
 
     code[A & (precip >= 60)] = "Af"
     code[A & (precip < 60) & (precip >= 25)] = "Am"
@@ -443,7 +447,9 @@ BIOME_RGB = {
 
 def biome(koppen_code, ice, h):
     """Step 23: biome from Koppen + ice override."""
-    out = np.vectorize(BIOME_OF_KOPPEN.get)(koppen_code)
+    codes, inverse = np.unique(koppen_code, return_inverse=True)
+    names = np.array([BIOME_OF_KOPPEN.get(c, "Ocean") for c in codes])
+    out = names[inverse.reshape(koppen_code.shape)]
     out = np.where(ice, "Ice sheet", out)
     out = out.astype(object)
     return out
@@ -460,7 +466,9 @@ def civilization_index(temp, precip, elev, koppen_code, biome_name):
     # Humid continental, Tropical savanna, Steppe}
     arable_biomes = {"Temperate forest", "Temperate broadleaf", "Mediterranean",
                      "Humid continental", "Tropical savanna", "Steppe"}
-    arable = np.array([b in arable_biomes for b in biome_name.flatten()]).reshape(biome_name.shape)
+    # LUT over the (few) unique biome names instead of a per-pixel Python loop.
+    uniq, inverse = np.unique(biome_name, return_inverse=True)
+    arable = np.isin(uniq, list(arable_biomes))[inverse.reshape(biome_name.shape)]
     arable = arable.astype(np.float32)
     # water
     water = np.clip((precip - 300) / 1200.0, 0, 1) * np.clip((2200 - precip) / 1000.0, 0, 1)
@@ -474,21 +482,23 @@ def civilization_index(temp, precip, elev, koppen_code, biome_name):
 
 def civilization_points(score, min_spacing=24):
     """Step 25: isolation-filtered habitability hotspots."""
-    from scipy.ndimage import distance_transform_edt
     h, w = score.shape
     pts = []
     cand = score.copy()
     thr = 0.55
+    r2 = min_spacing * min_spacing
     while True:
         yx = np.unravel_index(np.argmax(cand), cand.shape)
         s = cand[yx]
         if s < thr:
             break
-        pts.append((int(yx[0]), int(yx[1]), float(s)))
-        # suppress a neighbourhood
-        yy, xx = np.ogrid[:h, :w]
-        mask = (yy - yx[0]) ** 2 + (xx - yx[1]) ** 2 <= min_spacing ** 2
-        cand[mask] = 0.0
+        y, x = int(yx[0]), int(yx[1])
+        pts.append((y, x, float(s)))
+        # suppress a neighbourhood (windowed: only touches the local disk)
+        y0, y1 = max(0, y - min_spacing), min(h, y + min_spacing + 1)
+        x0, x1 = max(0, x - min_spacing), min(w, x + min_spacing + 1)
+        yy, xx = np.ogrid[y0:y1, x0:x1]
+        cand[y0:y1, x0:x1][(yy - y) ** 2 + (xx - x) ** 2 <= r2] = 0.0
         if len(pts) > 60:
             break
     return pts
@@ -586,6 +596,13 @@ def render_terrain(elev, ice, out_path, vert_exag=2.5):
     return out_path
 
 
+def _biome_palette(biome_name):
+    """(h, w, 3) float32 biome colours via a LUT over unique biome names."""
+    uniq, inverse = np.unique(biome_name, return_inverse=True)
+    lut = np.array([BIOME_RGB.get(b, (120, 160, 100)) for b in uniq], dtype=np.float32)
+    return lut[inverse.reshape(biome_name.shape)]
+
+
 def render_satellite(elev, biome_name, ice, out_path):
     """Step 21: natural-ish colour composite."""
     rgb = np.zeros((*elev.shape, 3), dtype=np.float32)
@@ -597,8 +614,7 @@ def render_satellite(elev, biome_name, ice, out_path):
     rgb[sea, 1] = 40 + (1 - d) * 60
     rgb[sea, 2] = 90 + (1 - d) * 90
     # land: biome colour brightened by hillshade
-    flat = biome_name.flatten()
-    pal = np.array([BIOME_RGB.get(b, (120, 160, 100)) for b in flat]).reshape(*biome_name.shape, 3)
+    pal = _biome_palette(biome_name)
     rgb[land] = pal[land] / 255.0
     shade = _hillshade(elev, vert_exag=2.0)
     rgb[land] = np.clip(rgb[land] * (0.55 + 0.45 * shade[land][..., None]), 0, 1)
@@ -610,9 +626,7 @@ def render_satellite(elev, biome_name, ice, out_path):
 
 def render_planet(elev, biome_name, ice, koppen_code, out_path):
     """Step 22: stylised planet map (biome-dominant with terrain shading)."""
-    flat = biome_name.flatten()
-    pal = np.array([BIOME_RGB.get(b, (120, 160, 100)) for b in flat]).reshape(*biome_name.shape, 3)
-    rgb = pal.astype(np.float32) / 255.0
+    rgb = _biome_palette(biome_name).astype(np.float32) / 255.0
     land = (elev >= 0)
     shade = _hillshade(elev, vert_exag=3.0)
     rgb[land] = np.clip(rgb[land] * (0.6 + 0.4 * shade[land][..., None]), 0, 1)
@@ -626,7 +640,7 @@ def render_planet(elev, biome_name, ice, koppen_code, out_path):
 #  orchestrator
 # ===========================================================================
 def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
-                    device="cuda", snr0=0.5, save_npy=True):
+                    device="auto", snr0=0.5, save_npy=True):
     """Run the full pipeline and emit every stage as PNG (+ npy)."""
     os.makedirs(out, exist_ok=True)
     t_total = time.time()
@@ -656,9 +670,10 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
     u, v = wind_field(elev, temp, boundaries, h, w)                    # 15
     precip = precipitation(u, v, elev, h)                              # 16
     koppen_code = koppen(temp, precip, elev, h)                        # 17
-    # ice + currents coupled (step 19 <-> 18): currents warm coasts -> less ice
+    # ice + currents coupled (step 19 <-> 18): ocean cells use SST; currents
+    # warm polar coasts -> less sea ice.  (The standalone ice_layer() result is
+    # intentionally not used - this SST-aware recomputation supersedes it.)
     lat = _lat(h)
-    ice = ice_layer(temp, elev, h)                                     # 18 (base)
     cu, cv, sst = ocean_currents(u, v, elev, h, w, iterations=2)        # 19
     eff_temp = np.where((elev >= 0), temp, sst)                        # ocean uses SST
     ice = ((eff_temp < 0) & (np.abs(lat) > 55)) | ((elev > 2500) & (temp < 0))
@@ -822,7 +837,7 @@ def main():
     ap.add_argument("--width", type=int, default=1024)
     ap.add_argument("--height", type=int, default=512)
     ap.add_argument("--out", type=str, default="planet_out")
-    ap.add_argument("--device", type=str, default="cuda")
+    ap.add_argument("--device", type=str, default="auto")
     ap.add_argument("--snr0", type=float, default=0.5)
     args = ap.parse_args()
     generate_planet(seed=args.seed, w=args.width, h=args.height, out=args.out,

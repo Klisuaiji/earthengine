@@ -17,7 +17,12 @@ three EDM U-Nets (coarse/base/decoder) by building them on the `meta` device
 """
 import json, struct, sys, os, mmap, numpy as np, torch
 
-REPO = r"D:\Qq203\Downloads\earthengine-master\.workbuddy\参考\terrain-diffusion-master"
+# Terrain-diffusion checkpoint repo: resolve relative to this file so the
+# project keeps working when the checkout moves (was a hardcoded absolute path).
+REPO = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".workbuddy", "参考", "terrain-diffusion-master",
+)
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
@@ -35,14 +40,24 @@ _NP_DTYPE = {
 _CHUNK = 256 * 1024  # 256 KB CPU staging buffer (small -> no commit ceiling hit)
 
 
+def _check_device(device):
+    if isinstance(device, str) and device.startswith('cuda') and not torch.cuda.is_available():
+        raise RuntimeError(
+            "device='cuda' requested but torch.cuda is not available "
+            "(no CUDA-capable GPU or a CPU-only torch build). "
+            "Pass device='cpu' or use diffusion_world.resolve_device('auto')."
+        )
+
+
 def load_safetensors_chunked(path, device='cuda'):
     """Load every tensor in a safetensors file directly to `device`.
 
     Reads the file in small (256 KB) regular heap chunks and streams each chunk
-    into a pre-allocated GPU tensor via copy_. The peak CPU RAM is one 256 KB
+    into a pre-allocated tensor via copy_. The peak CPU RAM is one 256 KB
     buffer (well under the per-process commit ceiling), and we never copy from
     memory-mapped file pages into the GPU (that poisoned the CUDA context).
     """
+    _check_device(device)
     with open(path, 'rb') as f:
         n = struct.unpack('<Q', f.read(8))[0]
         header = json.loads(f.read(n).decode('utf-8'))
@@ -77,6 +92,7 @@ def load_safetensors_chunked(path, device='cuda'):
 def load_models_chunked(pipe, device='cuda'):
     """Attach the three U-Nets to an (already constructed) WorldPipeline by
     building them on the `meta` device and loading weights straight to GPU."""
+    _check_device(device)
     import terrain_diffusion.models.edm_unet as eu
     specs = [('coarse_model', 'coarse_model'),
              ('base_model', 'base_model'),
@@ -94,7 +110,8 @@ def load_models_chunked(pipe, device='cuda'):
         print('  [ok] loaded %s to %s' % (attr, device), flush=True)
         # Release reserved caching-allocator blocks so the next (large) model's
         # first allocation isn't blocked by fragmentation of freed blocks.
-        torch.cuda.empty_cache()
+        if device.startswith('cuda'):
+            torch.cuda.empty_cache()
     pipe._apply_dtype_and_compile()
     return pipe
 
