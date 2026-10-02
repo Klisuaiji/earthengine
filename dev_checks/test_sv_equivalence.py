@@ -21,20 +21,26 @@ spec.loader.exec_module(old_mod)
 def compare(seed, w, h, n_raw, n_big, tag):
     o = old_mod.generate_spherical_world(seed, w=w, h=h, n_raw=n_raw, n_big=n_big)
     n = new_mod.generate_spherical_world(seed, w=w, h=h, n_raw=n_raw, n_big=n_big)
-    names = ("pid/raw", "merged", "land_mask", "continent_mask")
+    # The tectonic plate maps must stay bit-identical to the pre-optimization
+    # implementation.  land_mask / continent_mask were intentionally redesigned
+    # (worldengine/continents.py: core-growth continents decoupled from plate
+    # shapes, ~30% land), so they are no longer compared here.
+    names = ("pid/raw", "merged")
     ok = True
     for name, a, b in zip(names, o, n):
         if not np.array_equal(a, b):
             ok = False
             print(f"  [{tag}] seed={seed} {name} DIFFERS ({int((np.asarray(a) != np.asarray(b)).sum())} cells)")
-    # elevation synthesis as well
-    oe = old_mod.synthesize_elevation(o[1], h, w, seed, n_big=n_big, land_mask=o[2], continent_mask=o[3])
-    ne = new_mod.synthesize_elevation(n[1], h, w, seed, n_big=n_big, land_mask=n[2], continent_mask=n[3])
-    if not np.array_equal(oe, ne):
+    # land sanity on the new continents: fraction and label count
+    land_mask, continent_mask = n[2], n[3]
+    frac = float(land_mask.mean())
+    n_cont = len(np.unique(continent_mask[continent_mask >= 0]))
+    if not (0.24 <= frac <= 0.36):
         ok = False
-        print(f"  [{tag}] seed={seed} elevation DIFFERS max|d|={np.abs(oe - ne).max()}")
-    if not ok:
-        print(f"FAIL [{tag}] {w}x{h} n_raw={n_raw} n_big={n_big}")
+        print(f"  [{tag}] seed={seed} land fraction {frac:.3f} outside Earth-like range")
+    if not (3 <= n_cont <= 8):
+        ok = False
+        print(f"  [{tag}] seed={seed} continent count {n_cont} outside 3..8")
     return ok
 
 

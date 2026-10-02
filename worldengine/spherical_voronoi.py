@@ -31,6 +31,8 @@ from collections import deque
 import numpy
 from PIL import Image
 
+from worldengine.continents import build_continents
+
 TAU = 2.0 * math.pi
 
 # ---------------- Reference weights (from world_gen.py) ----------------
@@ -629,38 +631,51 @@ def synthesize_elevation(merged, h, w, seed, n_big=6, n_ocean=2, land_mask=None,
 
 
 # --------------- Main entry points ---------------
-def generate_spherical_world(seed, w=512, h=512, n_raw=30, n_big=6):
+def generate_spherical_world(seed, w=512, h=512, n_raw=30, n_big=6,
+                             land_fraction=None):
     """Return ``(raw_plates, merged_plates, land_mask, continent_mask)``.
 
+    ``raw_plates`` / ``merged_plates`` come from the spherical-Voronoi plate
+    simulation (used for boundaries, mountains and trenches).  ``land_mask`` /
+    ``continent_mask`` come from :mod:`worldengine.continents`: a handful of
+    continental cores grow into irregular geometric continents that are
+    deliberately decoupled from the plate shapes, then receive fractal
+    coastlines and Earth-like islands.  Land covers ~30% of the sphere
+    (Earth-like) regardless of the plate layout.
+
     ``land_mask`` is a boolean array (True = land) and ``continent_mask``
-    labels each land pixel with its continent index (-1 = ocean).  Continents
-    are the merged continental plates (``merged >= DEFAULT_N_OCEAN``).
+    labels each land pixel with its continent index (-1 = ocean).
     """
-    if n_big != len(PLATE_AREAS):
-        # Legacy / non-reference mode: keep previous behaviour
+    kwargs = {}
+    if land_fraction is not None:
+        kwargs["land_fraction"] = land_fraction
+
+    def _plates_and_merge():
         seeds, ocean_center = _place_seeds(seed, n_raw)
         pid = _partition_sphere(w, h, seeds, seed, n_raw)
         pid = _cleanup_raw_plates(pid, n_raw)
-        merged = _grow_continents(pid, ocean_center, n_ocean=DEFAULT_N_OCEAN,
-                                  n_continent=n_big - DEFAULT_N_OCEAN)
+        if n_big != len(PLATE_AREAS):
+            # Legacy / non-reference mode: keep previous behaviour
+            merged = _grow_continents(pid, ocean_center, n_ocean=DEFAULT_N_OCEAN,
+                                      n_continent=n_big - DEFAULT_N_OCEAN)
+        else:
+            n_continent = n_big - DEFAULT_N_OCEAN
+            # target order is ocean seeds first, then land nuclei (matches _grow_continents)
+            ocean_targets = [PLATE_AREAS[i] for i in range(len(PLATE_AREAS)) if PLATE_OCEAN[i]]
+            land_targets = [PLATE_AREAS[i] for i in range(len(PLATE_AREAS)) if not PLATE_OCEAN[i]]
+            target_for_grow = ocean_targets + land_targets
+            merged = _grow_continents(pid, ocean_center, n_ocean=DEFAULT_N_OCEAN,
+                                      n_continent=n_continent,
+                                      target_areas=target_for_grow)
         merged = remove_enclaves(merged, min_frac=0.0005)
-        land_mask, continent_mask = _build_continents(merged, seed, h, w)
-        return pid, merged, land_mask, continent_mask
+        return pid, merged
 
-    # Reference-weighted mode
-    seeds, ocean_center = _place_seeds(seed, n_raw)
-    pid = _partition_sphere(w, h, seeds, seed, n_raw)
-    pid = _cleanup_raw_plates(pid, n_raw)
-    n_continent = n_big - DEFAULT_N_OCEAN
-    # target order is ocean seeds first, then land nuclei (matches _grow_continents)
-    ocean_targets = [PLATE_AREAS[i] for i in range(len(PLATE_AREAS)) if PLATE_OCEAN[i]]
-    land_targets = [PLATE_AREAS[i] for i in range(len(PLATE_AREAS)) if not PLATE_OCEAN[i]]
-    target_for_grow = ocean_targets + land_targets
-    merged = _grow_continents(pid, ocean_center, n_ocean=DEFAULT_N_OCEAN,
-                              n_continent=n_continent,
-                              target_areas=target_for_grow)
-    merged = remove_enclaves(merged, min_frac=0.0005)
-    land_mask, continent_mask = _build_continents(merged, seed, h, w)
+    pid, merged = _plates_and_merge()
+    plate_is_ocean = [1 if g < DEFAULT_N_OCEAN else 0
+                      for g in range(int(merged.max()) + 1)]
+    land_mask, continent_mask = build_continents(seed, w, h, plates=merged,
+                                                 plate_is_ocean=plate_is_ocean,
+                                                 **kwargs)
     return pid, merged, land_mask, continent_mask
 
 

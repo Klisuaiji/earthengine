@@ -84,7 +84,11 @@ CONTINENT_PALETTE = numpy.array([
     (28, 62, 110),   # ocean       (label -1 -> idx 0)
     (46, 120, 52),   # continent 0 (super-continent A)
     (120, 180, 90),  # continent 1 (super-continent B)
-    (200, 160, 70),  # continent 2 (continent on ocean plate)
+    (200, 160, 70),  # continent 2 (mid-latitude continent)
+    (90, 140, 180),  # continent 3
+    (170, 110, 60),  # continent 4
+    (60, 160, 150),  # continent 5
+    (150, 90, 140),  # continent 6
 ], dtype=numpy.uint8)
 
 BOUNDARY_PALETTE = numpy.array([
@@ -220,11 +224,14 @@ def _arr_to_b64(arr, cmap=None, vmin=None, vmax=None):
 
 def generate_world(params):
     seed = params.get("seed", 1234567)
-    w = params.get("width", 1024)
-    h = params.get("height", 512)
+    w = params.get("width", 2048)
+    h = params.get("height", 1024)
     n_raw = params.get("n_raw", 30)
     n_big = params.get("n_big", 6)
     domain_amp = params.get("domain_amp", 0.22)
+    # "procedural": CPU-only high-res relief (default, neural rendering deferred)
+    # "diffusion": Terrain Diffusion micro-texture (slow / VRAM-heavy at 2048+)
+    detail = params.get("detail", "procedural")
 
     from worldengine import spherical_voronoi as sv
     sv.DOMAIN_AMP = domain_amp
@@ -238,35 +245,55 @@ def generate_world(params):
     t_voronoi = time.time() - t0
     bnd = classify_boundaries(merged, seed=seed)   # needed by coastal refinement
 
-    # Terrain Diffusion: cached pipeline, real elevation + physical climate.
-    pipe = _get_cached_pipeline(seed)
-    # Build the SAME varied coarse conditioning grid that planet_pipeline uses.
-    # A binary land/ocean grid gives the model no spatial gradient to steer by
-    # (only ~2x4 conditioning cells), so its output collapses toward the prior
-    # and looks like noise.  The tectonic coarse elevation (mountains on land,
-    # trenches/ridges at sea) supplies the gradient the model needs.
     from planet_pipeline import (
-        tectonic_coarse_elevation, coarse_conditioning_grid,
-        refine_coastline_and_islands,
+        terrain_type_map, render_terrain_types, render_relief_hires,
     )
-    coarse_elev = tectonic_coarse_elevation(land_mask, bnd)
-    grid = coarse_conditioning_grid(coarse_elev, land_mask)
-    pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=-8000.0)
-    elev, _ = generate_diffusion_world(pipe, w, h, tile=256, device=_PIPE_DEVICE or "auto")
-    elev = clamp_land_sea(elev, land_mask)
-    # Reuse planet_pipeline's VERIFIED post-processing so the land gets coherent
-    # fractal interior relief (and a fractal coastline + archipelago bumps)
-    # instead of the diffusion model's flat / noisy interior. This is the key
-    # step that makes the rendered relief look like real terrain, not static.
-    final_land, elev = refine_coastline_and_islands(elev, land_mask, bnd, seed)
-    elev[final_land] = numpy.maximum(elev[final_land], 1.0)
-    elev[~final_land] = numpy.minimum(elev[~final_land], -1.0)
+
+    if detail == "diffusion":
+        # Terrain Diffusion: cached pipeline, real elevation + physical climate.
+        pipe = _get_cached_pipeline(seed)
+        # Build the SAME varied coarse conditioning grid that planet_pipeline uses.
+        # A binary land/ocean grid gives the model no spatial gradient to steer by
+        # (only ~2x4 conditioning cells), so its output collapses toward the prior
+        # and looks like noise.  The tectonic coarse elevation (mountains on land,
+        # trenches/ridges at sea) supplies the gradient the model needs.
+        from planet_pipeline import (
+            tectonic_coarse_elevation, coarse_conditioning_grid,
+            refine_coastline_and_islands, apply_geography,
+        )
+        coarse_elev = tectonic_coarse_elevation(land_mask, bnd)
+        grid = coarse_conditioning_grid(coarse_elev, land_mask)
+        pipe.set_custom_conditioning_import(0, grid, 0, 0, default_value=-8000.0)
+        elev, _ = generate_diffusion_world(pipe, w, h, tile=256, device=_PIPE_DEVICE or "auto")
+        elev = clamp_land_sea(elev, land_mask)
+        # Geographic terrain: large-scale structure (plains / hills / plateaus /
+        # mountain ranges from plate tectonics) comes from our terrain-type map;
+        # the diffusion output only contributes its high-frequency micro-texture.
+        # Without this the diffusion model invents geography at random.
+        final_land, elev = refine_coastline_and_islands(elev, land_mask, bnd, seed)
+        geo_elev, terrain_class = terrain_type_map(land_mask, bnd, seed)
+        elev = apply_geography(elev, final_land, geo_elev)
+        elev[final_land] = numpy.maximum(elev[final_land], 1.0)
+        elev[~final_land] = numpy.minimum(elev[~final_land], -1.0)
+    else:
+        from planet_pipeline import procedural_elevation, trace_rivers
+        elev, geo_elev, terrain_class = procedural_elevation(land_mask, bnd, seed)
+        final_land = land_mask.astype(bool)
+        river_min_acc = max(120, (w * h) // 8000)
+        rivers, river_acc = trace_rivers(elev, final_land, min_acc=river_min_acc)
+
     ocean_mask = ~final_land
     temp, precip = compute_physical_climate(elev, h, w)
     t_diffusion = time.time() - t0 - t_voronoi
     t_total = time.time() - t0
 
     images = {}
+    # Terrain-type colouring (the geographic steering map).
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as tmp:
+        tt_path = _os.path.join(tmp, "terrain_types.png")
+        render_terrain_types(terrain_class, tt_path)
+        images["terrain_types"] = _img_to_b64(numpy.asarray(Image.open(tt_path)))
 
     # Generated continents (the actual landmasses).
     cont_idx = numpy.clip(continent_mask + 1, 0, CONTINENT_PALETTE.shape[0] - 1)
@@ -295,11 +322,16 @@ def generate_world(params):
     merged_rgb = numpy.asarray(Image.fromarray(rgb_big).resize((w, h), Image.BILINEAR))
     images["merged"] = _img_to_b64(merged_rgb)
 
-    # Diffusion elevation relief (hillshaded + hypsometric).
+    # High-res relief render (今怀古 reference style): hypsometric land,
+    # cyan shelf glow, crisp hillshade, river network overlay.
     import tempfile, os as _os
     with tempfile.TemporaryDirectory() as tmp:
         rel_path = _os.path.join(tmp, "relief.png")
-        render_relief(elev, rel_path, vert_exag=2.5)
+        if detail == "diffusion":
+            render_relief(elev, rel_path, vert_exag=2.5)
+        else:
+            render_relief_hires(elev, rel_path, rivers=rivers, acc=river_acc,
+                                min_acc=river_min_acc, land_mask=final_land)
         images["elevation_relief"] = _img_to_b64(numpy.asarray(Image.open(rel_path)))
 
     # Physical temperature and precipitation.
@@ -321,6 +353,7 @@ def generate_world(params):
         "voronoi_time": round(t_voronoi, 2),
         "diffusion_time": round(t_diffusion, 2),
         "total_time": round(t_total, 2),
+        "detail_mode": detail,
         "raw_plates": n_raw,
         "merged_groups": n_groups,
         "ocean_pct": round(float(ocean_mask.sum()) / (w * h) * 100, 1),
@@ -332,6 +365,8 @@ def generate_world(params):
         "precip_min_mm": round(float(precip.min()), 0),
         "precip_max_mm": round(float(precip.max()), 0),
     }
+    if detail == "procedural":
+        stats["river_pixels"] = int(rivers.sum())
     for g in range(n_groups):
         mask = merged == g
         stats[f"group_{g}_area_pct"] = round(float(mask.sum()) / (w * h) * 100, 1)
@@ -340,7 +375,9 @@ def generate_world(params):
     # Layer catalogue grouped by right-rail category (order matters).
     layers_meta = {
         "elevation_relief": {"label": "真实地形", "cat": "地形", "overlay": True,
-                              "desc": "Terrain Diffusion 渲染的山海起伏（山体阴影 + 高程设色）"},
+                              "desc": "地貌 + 山脉脊状纹理 + 河网（今怀古风格设色）"},
+        "terrain_types":    {"label": "地貌类型", "cat": "地形", "overlay": True,
+                              "desc": "地理常理掩膜：平原/丘陵/高原/山脉，约束地形大尺度结构"},
         "merged":           {"label": "合并大板块", "cat": "板块", "overlay": True,
                               "desc": "微板块合并为 N 大板块（黑线 = 边界）"},
         "raw_plates":       {"label": "原始微板块", "cat": "板块", "overlay": True,
@@ -363,13 +400,14 @@ def generate_world(params):
     process = [
         {"key": "raw_plates",      "label": "① 原始微板块", "desc": "球面 Voronoi 初始细分区"},
         {"key": "merged",          "label": "② 合并大板块", "desc": "微板块合并为 N 大板块"},
-        {"key": "continents",      "label": "③ 生成大陆",   "desc": "非海洋板块即大陆"},
+        {"key": "continents",      "label": "③ 生成大陆",   "desc": "大陆核生长 + 分形海岸与岛屿"},
         {"key": "boundary_types",  "label": "④ 板块边界",   "desc": "生长/消亡/平移分类"},
-        {"key": "elevation_relief","label": "⑤ 真实地形",   "desc": "Terrain Diffusion 渲染真实高程"},
-        {"key": "temperature",     "label": "⑥ 温度",       "desc": "物理温度模型"},
-        {"key": "precipitation",   "label": "⑦ 降水",       "desc": "物理降水模型"},
-        {"key": "koppen",          "label": "⑧ 气候带",     "desc": "简化 Köppen 分类"},
-        {"key": "ocean_mask",      "label": "⑨ 海陆掩膜",   "desc": "最终海陆二值掩膜"},
+        {"key": "terrain_types",   "label": "⑤ 地貌类型",   "desc": "地理常理：平原/丘陵/高原/山脉"},
+        {"key": "elevation_relief","label": "⑥ 真实地形",   "desc": "脊状山脉纹理 + D8 河网 + 参考图设色"},
+        {"key": "temperature",     "label": "⑦ 温度",       "desc": "物理温度模型"},
+        {"key": "precipitation",   "label": "⑧ 降水",       "desc": "物理降水模型"},
+        {"key": "koppen",          "label": "⑨ 气候带",     "desc": "简化 Köppen 分类"},
+        {"key": "ocean_mask",      "label": "⑩ 海陆掩膜",   "desc": "最终海陆二值掩膜"},
     ]
 
     return {
