@@ -258,9 +258,10 @@ def terrain_type_map(land_mask, boundaries, seed):
         cap = np.clip(1.0 - dist2 / (r_px * r_px), 0.0, 1.0)
         land_elev = land_elev + cap.astype(np.float32) * (1150.0 + broad * 300.0)
 
-    # mountain ranges along convergent boundaries, with along-range ruggedness
+    # mountain chains along convergent boundaries: narrow + tall so they read
+    # as linear ranges (Andes style) instead of broad blobs
     rugged = 0.6 + 0.7 * np.clip(noise * 1.6, 0.0, 1.0)
-    conv = 2600.0 * np.exp(-cdist / 24.0) * lm * rugged
+    conv = 2900.0 * np.exp(-cdist / 17.0) * lm * rugged
     land_elev = land_elev + conv + broad * 180.0
 
     geo_elev = np.where(lm, land_elev, ocean).astype(np.float32)
@@ -900,6 +901,105 @@ def render_planet(elev, biome_name, ice, koppen_code, out_path):
 
 
 # ===========================================================================
+#  Earth-style biome render (real-world feel: deserts, rainforest, tundra, ice)
+# ===========================================================================
+def render_earth_style(elev, temp, precip, out_path, rivers=None, acc=None,
+                       min_acc=1.0, land_mask=None, ice=None, seed=17,
+                       vert_exag=4.0):
+    """Satellite-physical-map render driven by the physical climate.
+
+    Real Earth's 'feel' comes from climate-banded surface colour - Sahara
+    tans, Amazon dark greens, grey-brown tundra, polar ice - not from
+    elevation ramps alone.  ``temp`` must be lapse-corrected (as produced by
+    solar_temperature) so snowlines emerge naturally on high mountains.
+    """
+    from PIL import Image
+    from scipy.ndimage import gaussian_filter, distance_transform_edt
+    elev = elev.astype(np.float32)
+    h, w = elev.shape
+    land = (elev >= 0) if land_mask is None else land_mask.astype(bool)
+    t = temp.astype(np.float32)
+    p = precip.astype(np.float32)
+    tex = _fbm((h, w), base_scale=14, octaves=4, seed=seed)      # surface patchiness
+    tex2 = _fbm((h, w), base_scale=64, octaves=3, seed=seed + 5)  # regional variation
+
+    rgb = np.zeros((h, w, 3), dtype=np.float32)
+
+    # ---- ocean: depth blues + cyan shelf glow + subtle deep texture ----
+    sea = ~land
+    if sea.any():
+        d_in = distance_transform_edt(land).astype(np.float32)
+        glow = np.exp(-d_in / (w * 0.018))
+        depth = np.clip(-elev[sea] / 5500.0, 0, 1)
+        rgb[sea, 0] = np.interp(depth, [0, 0.15, 1], [0.48, 0.26, 0.075])
+        rgb[sea, 1] = np.interp(depth, [0, 0.15, 1], [0.78, 0.62, 0.35])
+        rgb[sea, 2] = np.interp(depth, [0, 0.15, 1], [0.84, 0.78, 0.62])
+        rgb[sea] += glow[sea, None] * np.array([0.08, 0.14, 0.10])
+
+    # ---- land: climate-banded vegetation colour ----
+    if land.any():
+        # smooth the climate fields so biome borders are soft like real Earth
+        t = gaussian_filter(t, 4.0)
+        p = gaussian_filter(p, 7.0)
+        tl = t[land]; pl = p[land]; xl = tex[land]; x2 = tex2[land]
+        # Earth's arid belts: subtropical highs near +-15..35 deg (Sahara type)
+        # plus deep continental interiors (Gobi type); without these mechanisms
+        # the precipitation model rains almost everywhere.
+        lat_deg = _lat(h)
+        latband = np.exp(-(((np.abs(lat_deg) - 26.0) / 11.0) ** 2)).astype(np.float32)
+        latband = np.broadcast_to(latband, (h, w))
+        d_oc = distance_transform_edt(land).astype(np.float32)
+        cont = np.clip((d_oc - 70.0) / 130.0, 0.0, 1.0).astype(np.float32)
+        dry_zone = np.maximum(latband, 0.85 * cont)
+        lb = latband[land]; cz = cont[land]; dz = dry_zone[land]
+        # blends: 0..1 membership of each biome at this pixel
+        cold = np.clip((6.0 - tl) / 14.0, 0, 1)
+        # subtropical highs and continentality suppress rainfall physically
+        peff = pl * (1.0 - 0.75 * lb) * (1.0 - 0.55 * cz)
+        arid = np.clip((520.0 - peff) / 480.0, 0, 1) * np.clip((tl + 2.0) / 12.0, 0, 1)
+        humid = np.clip((pl - 1100.0) / 900.0, 0, 1) * np.clip((tl - 10.0) / 8.0, 0, 1) * (1 - dz)
+        # temperate green base, patched by noise
+        base = np.empty((tl.size, 3), dtype=np.float32)
+        base[:, 0] = 0.42 + 0.10 * x2
+        base[:, 1] = 0.60 + 0.08 * x2
+        base[:, 2] = 0.30 + 0.06 * x2
+        sand = np.stack([0.82 + 0.07 * xl, 0.72 + 0.06 * xl, 0.45 + 0.06 * xl], axis=1)
+        jungle = np.stack([0.13 + 0.04 * xl, 0.38 + 0.05 * xl, 0.16 + 0.04 * xl], axis=1)
+        tundra = np.stack([0.58 + 0.06 * xl, 0.56 + 0.06 * xl, 0.50 + 0.06 * xl], axis=1)
+        snow = np.stack([0.93 + 0.015 * xl, 0.94 + 0.015 * xl, 0.96 + 0.015 * xl], axis=1)
+        c = base * (1 - arid[:, None]) + sand * arid[:, None]
+        c = c * (1 - humid[:, None]) + jungle * humid[:, None]
+        c = c * (1 - np.clip(cold, 0, 0.85)[:, None]) + tundra * np.clip(cold, 0, 0.85)[:, None]
+        # permanent snow where lapse-corrected temp is well below freezing
+        sn = np.clip((-tl - 2.0) / 5.0, 0, 1)
+        c = c * (1 - sn[:, None]) + snow * sn[:, None]
+        rgb[land] = c
+
+    # ---- relief shading ----
+    shade = _hillshade(elev, vert_exag=vert_exag)
+    shade = gaussian_filter(shade, 0.35)
+    rgb *= np.clip(0.30 + 0.85 * shade[..., None], 0.25, 1.30)
+
+    # ---- rivers: dark blue-green, trunks wider than tributaries ----
+    if rivers is not None and rivers.any():
+        rmask = rivers & land
+        lw = np.zeros((h, w), dtype=np.float32)
+        lw[rmask] = np.clip(np.log2(acc[rmask] / max(1.0, min_acc)) * 0.55 + 0.9, 0.6, 2.8)
+        lw = gaussian_filter(lw, 0.9)
+        strength = np.clip(lw * 0.6 + gaussian_filter(rmask.astype(np.float32), 1.0) * 0.3, 0, 0.93)
+        rgb = rgb * (1 - strength[..., None]) + np.array([0.13, 0.28, 0.45]) * strength[..., None]
+
+    # ---- sea ice & ice caps ----
+    if ice is not None:
+        ice_rgb = np.array([0.91, 0.93, 0.95])
+        shade_i = np.clip(0.78 + 0.32 * shade[..., None], 0, 1.1)
+        rgb[ice] = np.clip(ice_rgb * shade_i[ice], 0, 1)
+
+    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(out_path)
+    return out_path
+
+
+# ===========================================================================
 #  orchestrator
 # ===========================================================================
 def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
@@ -939,7 +1039,7 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
         final_land = land_mask.astype(bool)
 
     print("[P1-4] rivers ...", flush=True)
-    river_min_acc = max(120, (w * h) // 8000)
+    river_min_acc = max(90, (w * h) // 12000)
     rivers, river_acc = trace_rivers(elev, final_land, min_acc=river_min_acc)
 
     # ---- Phase 2 ----
@@ -986,6 +1086,9 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
     render_relief_hires(elev, os.path.join(out, "08b_relief_hires.png"),
                         rivers=rivers, acc=river_acc, min_acc=river_min_acc,
                         land_mask=final_land, ice=ice)                     # 今怀古 style
+    render_earth_style(elev, temp, precip, os.path.join(out, "08c_earth_style.png"),
+                       rivers=rivers, acc=river_acc, min_acc=river_min_acc,
+                       land_mask=final_land, ice=ice)                      # Earth-like biomes
     _colormap(temp, os.path.join(out, "09_temperature.png"), "turbo")
     _colormap(pressure, os.path.join(out, "10_pressure.png"), "coolwarm")
     _quiver_png(u, v, os.path.join(out, "11_wind.png"),

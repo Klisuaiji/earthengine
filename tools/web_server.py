@@ -247,6 +247,7 @@ def generate_world(params):
 
     from planet_pipeline import (
         terrain_type_map, render_terrain_types, render_relief_hires,
+        render_earth_style, _lat as _lat_deg,
     )
 
     if detail == "diffusion":
@@ -284,6 +285,9 @@ def generate_world(params):
 
     ocean_mask = ~final_land
     temp, precip = compute_physical_climate(elev, h, w)
+    # polar sea ice + permanent snowcaps (same rule as generate_planet)
+    lat_deg = numpy.broadcast_to(_lat_deg(h), (h, w))
+    ice = ((temp < -2.0) & (numpy.abs(lat_deg) > 55.0)) | ((elev > 2500.0) & (temp < 0.0))
     t_diffusion = time.time() - t0 - t_voronoi
     t_total = time.time() - t0
 
@@ -330,8 +334,9 @@ def generate_world(params):
         if detail == "diffusion":
             render_relief(elev, rel_path, vert_exag=2.5)
         else:
-            render_relief_hires(elev, rel_path, rivers=rivers, acc=river_acc,
-                                min_acc=river_min_acc, land_mask=final_land)
+            render_earth_style(elev, temp, precip, rel_path,
+                               rivers=rivers, acc=river_acc, min_acc=river_min_acc,
+                               land_mask=final_land, ice=ice)
         images["elevation_relief"] = _img_to_b64(numpy.asarray(Image.open(rel_path)))
 
     # Physical temperature and precipitation.
@@ -375,7 +380,7 @@ def generate_world(params):
     # Layer catalogue grouped by right-rail category (order matters).
     layers_meta = {
         "elevation_relief": {"label": "真实地形", "cat": "地形", "overlay": True,
-                              "desc": "地貌 + 山脉脊状纹理 + 河网（今怀古风格设色）"},
+                              "desc": "气候分区地表色（沙漠/雨林/苔原/冰盖）+ 脊状山脉 + 河网"},
         "terrain_types":    {"label": "地貌类型", "cat": "地形", "overlay": True,
                               "desc": "地理常理掩膜：平原/丘陵/高原/山脉，约束地形大尺度结构"},
         "merged":           {"label": "合并大板块", "cat": "板块", "overlay": True,
