@@ -426,6 +426,39 @@ def diffusion_refine(grid, seed, w, h, device="auto", snr0=0.5):
     return elev, climate_raw
 
 
+def fractalize_coast(land_mask, seed, band=None):
+    """Multi-scale fractal coastline (the reference maps' defining trait).
+
+    Perturbs the signed distance-to-coast field with three octaves of
+    domain-warped noise (large gulfs -> small bays -> fine roughness) and
+    re-thresholds, producing natural inlets, peninsulas and fringing islets
+    at every scale.  Land fraction is preserved to within ~1%.
+    """
+    from scipy.ndimage import distance_transform_edt, gaussian_filter
+    h, w = land_mask.shape
+    if band is None:
+        band = max(3.0, w / 256.0)          # perturbation depth in px
+    lm = land_mask.astype(bool)
+    # signed distance, positive ON LAND (distance-to-ocean minus distance-to-land)
+    sdf = (distance_transform_edt(lm).astype(np.float32)
+           - distance_transform_edt(~lm).astype(np.float32))
+    # domain warping so bays meander instead of looking like uniform ripples
+    wx = gaussian_filter(_fbm((h, w), base_scale=48, octaves=3, seed=seed + 811), 2.0)
+    wy = gaussian_filter(_fbm((h, w), base_scale=48, octaves=3, seed=seed + 812), 2.0)
+    n1 = _fbm((h, w), base_scale=max(8, w // 10), octaves=3, seed=seed + 813)
+    n2 = _fbm((h, w), base_scale=max(4, w // 36), octaves=3, seed=seed + 814)
+    n3 = _fbm((h, w), base_scale=max(2, w // 110), octaves=2, seed=seed + 815)
+    ys, xs = np.mgrid[0:h, 0:w]
+    xs2 = np.clip(xs + wx * w * 0.03, 0, w - 1.001).astype(np.int32)
+    ys2 = np.clip(ys + wy * h * 0.05, 0, h - 1.001).astype(np.int32)
+    n1 = n1[ys2, xs2]; n2 = n2[ys2, xs2]; n3 = n3[ys2, xs2]
+    warp = ((n1 - 0.5) * band * 3.2 + (n2 - 0.5) * band * 1.6
+            + (n3 - 0.5) * band * 0.8).astype(np.float32)
+    # only the coastal band moves; continent interiors keep their shape
+    t = np.clip(1.0 - np.abs(sdf) / (band * 6.0), 0.0, 1.0) ** 0.7
+    return (sdf + warp * t) > 0.0
+
+
 def procedural_elevation(land_mask, boundaries, seed):
     """Full-resolution elevation without the diffusion model.
 
@@ -929,7 +962,7 @@ def render_earth_style(elev, temp, precip, out_path, rivers=None, acc=None,
     sea = ~land
     if sea.any():
         d_in = distance_transform_edt(land).astype(np.float32)
-        glow = np.exp(-d_in / (w * 0.018))
+        glow = np.exp(-d_in / (w * 0.030))            # wide shelf, like the refs
         depth = np.clip(-elev[sea] / 5500.0, 0, 1)
         rgb[sea, 0] = np.interp(depth, [0, 0.15, 1], [0.48, 0.26, 0.075])
         rgb[sea, 1] = np.interp(depth, [0, 0.15, 1], [0.78, 0.62, 0.35])
@@ -973,27 +1006,47 @@ def render_earth_style(elev, temp, precip, out_path, rivers=None, acc=None,
         # permanent snow where lapse-corrected temp is well below freezing
         sn = np.clip((-tl - 2.0) / 5.0, 0, 1)
         c = c * (1 - sn[:, None]) + snow * sn[:, None]
+        # steep high ground exposes bare rock (reference maps' craggy ranges)
+        gy, gx = np.gradient(elev)
+        slope = np.sqrt(gy * gy + gx * gx)
+        rock_f = (np.clip((slope - 55.0) / 90.0, 0.0, 1.0)
+                  * np.clip((elev - 500.0) / 900.0, 0.0, 1.0))[land]
+        rock = np.stack([0.46 + 0.05 * xl, 0.41 + 0.05 * xl, 0.37 + 0.05 * xl], axis=1)
+        c = c * (1 - rock_f[:, None]) + rock * rock_f[:, None]
         rgb[land] = c
 
-    # ---- relief shading ----
-    shade = _hillshade(elev, vert_exag=vert_exag)
-    shade = gaussian_filter(shade, 0.35)
-    rgb *= np.clip(0.30 + 0.85 * shade[..., None], 0.25, 1.30)
+    # ---- relief shading: two lights (NW key + W fill) for crisper ridges ----
+    shade = 0.62 * _hillshade(elev, az=315.0, vert_exag=vert_exag) \
+        + 0.38 * _hillshade(elev, az=245.0, vert_exag=vert_exag * 0.7)
+    shade = gaussian_filter(shade, 0.3)
+    rgb *= np.clip(0.26 + 0.92 * shade[..., None], 0.22, 1.32)
 
     # ---- rivers: dark blue-green, trunks wider than tributaries ----
     if rivers is not None and rivers.any():
         rmask = rivers & land
         lw = np.zeros((h, w), dtype=np.float32)
-        lw[rmask] = np.clip(np.log2(acc[rmask] / max(1.0, min_acc)) * 0.55 + 0.9, 0.6, 2.8)
+        lw[rmask] = np.clip(np.log2(acc[rmask] / max(1.0, min_acc)) * 0.62 + 1.0, 0.7, 3.2)
         lw = gaussian_filter(lw, 0.9)
-        strength = np.clip(lw * 0.6 + gaussian_filter(rmask.astype(np.float32), 1.0) * 0.3, 0, 0.93)
-        rgb = rgb * (1 - strength[..., None]) + np.array([0.13, 0.28, 0.45]) * strength[..., None]
+        strength = np.clip(lw * 0.72 + gaussian_filter(rmask.astype(np.float32), 1.0) * 0.3, 0, 0.94)
+        rgb = rgb * (1 - strength[..., None]) + np.array([0.12, 0.25, 0.42]) * strength[..., None]
 
-    # ---- sea ice & ice caps ----
+    # ---- sea ice & ice caps: feathered blend, no hard cotton-ball edges ----
     if ice is not None:
-        ice_rgb = np.array([0.91, 0.93, 0.95])
-        shade_i = np.clip(0.78 + 0.32 * shade[..., None], 0, 1.1)
-        rgb[ice] = np.clip(ice_rgb * shade_i[ice], 0, 1)
+        ice_f = gaussian_filter(ice.astype(np.float32), 2.5)
+        ice_rgb = np.array([0.89, 0.92, 0.95])
+        shade_i = np.clip(0.80 + 0.30 * shade[..., None], 0, 1.1)
+        rgb = rgb * (1 - ice_f[..., None]) + ice_rgb * shade_i * ice_f[..., None]
+
+    # ---- subtle graticule (30 deg), like a real atlas plate ----
+    a = np.full((h, w), 0.10, dtype=np.float32)
+    for k in (30, 60, 120, 150):            # rows: 60N 30N 30S 60S
+        y = int(round(k * h / 180.0))
+        if 0 <= y < h:
+            a[y, :] = 0.16
+    a[int(round(h / 2)), :] = 0.18           # equator
+    for k in range(1, 12):                   # cols every 30 deg
+        a[:, int(round(k * w / 12.0))] = 0.16
+    rgb = rgb * (1 - a[..., None]) + np.array([1.0, 1.0, 1.0]) * a[..., None]
 
     Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).save(out_path)
     return out_path
@@ -1035,8 +1088,10 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
         elev = apply_geography(elev, final_land, geo_elev)
     else:
         print("[P1-2] procedural high-res elevation (no diffusion) ...", flush=True)
-        elev, geo_elev, terrain_class = procedural_elevation(land_mask, boundaries, seed)
-        final_land = land_mask.astype(bool)
+        # fractal coastline first: every bay/peninsula/islet the mask gains
+        # flows into terrain, rivers and the terrain-type map below
+        final_land = fractalize_coast(land_mask, seed)
+        elev, geo_elev, terrain_class = procedural_elevation(final_land, boundaries, seed)
 
     print("[P1-4] rivers ...", flush=True)
     river_min_acc = max(90, (w * h) // 12000)

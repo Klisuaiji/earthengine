@@ -277,10 +277,10 @@ def generate_world(params):
         elev[final_land] = numpy.maximum(elev[final_land], 1.0)
         elev[~final_land] = numpy.minimum(elev[~final_land], -1.0)
     else:
-        from planet_pipeline import procedural_elevation, trace_rivers
-        elev, geo_elev, terrain_class = procedural_elevation(land_mask, bnd, seed)
-        final_land = land_mask.astype(bool)
-        river_min_acc = max(120, (w * h) // 8000)
+        from planet_pipeline import procedural_elevation, trace_rivers, fractalize_coast
+        final_land = fractalize_coast(land_mask, seed)
+        elev, geo_elev, terrain_class = procedural_elevation(final_land, bnd, seed)
+        river_min_acc = max(90, (w * h) // 12000)
         rivers, river_acc = trace_rivers(elev, final_land, min_acc=river_min_acc)
 
     ocean_mask = ~final_land

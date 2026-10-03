@@ -32,7 +32,7 @@ TAU = 2.0 * math.pi
 # Earth-like defaults: ~30% land in total.  Mainlands get LAND_FRACTION of the
 # sphere, islands add the rest.
 LAND_FRACTION = 0.275
-ISLAND_FRACTION = 0.025
+ISLAND_FRACTION = 0.04
 
 # Continent count histogram (weights) and share-of-land templates, modelled on
 # Earth: one or two dominant continents, several medium ones, one small.
@@ -471,16 +471,16 @@ def _grow_islands(seed, w, h, land_mask, cores, shares, island_fraction,
         from scipy.ndimage import distance_transform_edt
         d_land = distance_transform_edt(~land_mask)
         band_y, band_x = numpy.nonzero((d_land > 4) & (d_land < 20))
-        fringe = rng.randint(30, 60)
+        fringe = rng.randint(70, 110)
         if len(band_y):
             chosen = []
             tries = 0
-            while len(chosen) < fringe and tries < 400:
+            while len(chosen) < fringe and tries < 900:
                 tries += 1
                 i = rng.randint(len(band_y))
                 cy, cx = int(band_y[i]), int(band_x[i])
                 if any((cy - qy) ** 2 + min(abs(cx - qx), w - abs(cx - qx)) ** 2
-                       < 10 ** 2 for qy, qx in chosen):
+                       < 8 ** 2 for qy, qx in chosen):
                     continue
                 chosen.append((cy, cx))
                 lat = math.pi / 2 - (cy + 0.5) / h * math.pi
@@ -488,7 +488,7 @@ def _grow_islands(seed, w, h, land_mask, cores, shares, island_fraction,
                 cl = math.cos(lat)
                 v = numpy.array([cl * math.cos(lon), math.sin(lat), cl * math.sin(lon)],
                                 dtype=numpy.float32)
-                _add_local(result, h, w, v, rng.uniform(0.000015, 0.00007),
+                _add_local(result, h, w, v, rng.uniform(0.000012, 0.00008),
                            seed + 500 + tries, warp_amp=0.5)
     except ImportError:
         pass
