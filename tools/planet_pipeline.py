@@ -467,8 +467,9 @@ def procedural_elevation(land_mask, boundaries, seed):
     stay CPU-only, fast and memory-safe.
     """
     geo_elev, terrain_class = terrain_type_map(land_mask, boundaries, seed)
+    # gentle ocean texture: real bathymetry maps show smooth, soft ocean
     fine = _fbm(geo_elev.shape, base_scale=10, octaves=5, seed=seed + 701)
-    elev = geo_elev + fine * np.where(land_mask, 60.0, 220.0).astype(np.float32)
+    elev = geo_elev + fine * np.where(land_mask, 60.0, 70.0).astype(np.float32)
     elev = ridge_detail(elev, terrain_class, seed)
     elev[land_mask] = np.maximum(elev[land_mask], 3.0)
     elev[~land_mask] = np.minimum(elev[~land_mask], -1.0)
@@ -796,6 +797,38 @@ def _hillshade(elev, az=315.0, alt=45.0, vert_exag=1.0):
     return np.clip(shade, 0.0, 1.0)
 
 
+def _mapgen_light(z_m, az_deg=315.0, overhead=2.5, ambient=0.45,
+                  slope_z=0.15, flat_z=1.15, h_scale=1.0 / 3000.0):
+    """Normal-vector lighting adapted from redblobgames/mapgen4.
+
+    The surface normal's z component is anchored to the texel size (not the
+    gradient), so flat ground stays bright while slopes tilt the normal and
+    pick up strong contrast; the light's own elevation steepens adaptively
+    via ``mix(slope_z, flat_z, normal.z)``.  This is what gives real GIS
+    relief maps their crisp, "physical" look.
+    """
+    z = z_m.astype(np.float32) * np.float32(h_scale)
+    h, w = z.shape
+    zN = np.empty_like(z); zS = np.empty_like(z)
+    zN[1:, :] = z[:-1, :]; zN[0, :] = z[0, :]
+    zS[:-1, :] = z[1:, :]; zS[-1, :] = z[-1, :]
+    zE = np.roll(z, -1, axis=1)              # x wraps (cylindrical world)
+    zW = np.roll(z, 1, axis=1)
+    dzNS = np.float32(0.5) * (zS - zN)
+    dzEW = np.float32(0.5) * (zE - zW)
+    zb = np.float32(overhead * (1.0 / w + 1.0 / h))
+    n = np.sqrt(dzNS * dzNS + dzEW * dzEW + zb * zb)
+    nz = zb / n
+    a = np.deg2rad(az_deg)
+    lx, ly = np.cos(a), np.sin(a)
+    lz = slope_z + (flat_z - slope_z) * nz
+    ll = np.sqrt(lx * lx + ly * ly + lz * lz)
+    light = ambient + np.clip((dzNS / n) * (lx / ll) +
+                              (dzEW / n) * (ly / ll) + nz * (lz / ll),
+                              0.0, None)
+    return light.astype(np.float32)
+
+
 def _hypsometric(elev, lo=-8000, hi=4000):
     rgb = np.zeros((*elev.shape, 3), dtype=np.float32)
     # ocean depth tint (lighter than near-black so trenches are visible but
@@ -964,10 +997,10 @@ def render_earth_style(elev, temp, precip, out_path, rivers=None, acc=None,
         d_in = distance_transform_edt(land).astype(np.float32)
         glow = np.exp(-d_in / (w * 0.030))            # wide shelf, like the refs
         depth = np.clip(-elev[sea] / 5500.0, 0, 1)
-        rgb[sea, 0] = np.interp(depth, [0, 0.15, 1], [0.48, 0.26, 0.075])
-        rgb[sea, 1] = np.interp(depth, [0, 0.15, 1], [0.78, 0.62, 0.35])
-        rgb[sea, 2] = np.interp(depth, [0, 0.15, 1], [0.84, 0.78, 0.62])
-        rgb[sea] += glow[sea, None] * np.array([0.08, 0.14, 0.10])
+        rgb[sea, 0] = np.interp(depth, [0, 0.15, 1], [0.45, 0.18, 0.06])
+        rgb[sea, 1] = np.interp(depth, [0, 0.15, 1], [0.75, 0.52, 0.30])
+        rgb[sea, 2] = np.interp(depth, [0, 0.15, 1], [0.82, 0.72, 0.55])
+        rgb[sea] += glow[sea, None] * np.array([0.05, 0.09, 0.07])
 
     # ---- land: climate-banded vegetation colour ----
     if land.any():
@@ -1015,11 +1048,22 @@ def render_earth_style(elev, temp, precip, out_path, rivers=None, acc=None,
         c = c * (1 - rock_f[:, None]) + rock * rock_f[:, None]
         rgb[land] = c
 
-    # ---- relief shading: two lights (NW key + W fill) for crisper ridges ----
-    shade = 0.62 * _hillshade(elev, az=315.0, vert_exag=vert_exag) \
-        + 0.38 * _hillshade(elev, az=245.0, vert_exag=vert_exag * 0.7)
-    shade = gaussian_filter(shade, 0.3)
-    rgb *= np.clip(0.26 + 0.92 * shade[..., None], 0.22, 1.32)
+    # ---- relief shading: mapgen4-style normal lighting ----
+    # micro-detail feeds SHADING ONLY (the data stays smooth) and applies to
+    # LAND only; the ocean is shaded from a heavily smoothed bathymetry so it
+    # reads as calm deep water, never as storm waves
+    detail = (_fbm((h, w), base_scale=5, octaves=3, seed=seed + 91) - 0.5) * 45.0
+    detail += (_fbm((h, w), base_scale=14, octaves=4, seed=seed + 92) - 0.5) * 120.0
+    z_land = elev + detail
+    z_sea = gaussian_filter(elev.astype(np.float32), 6.0)
+    z_shade = np.where(land, z_land, z_sea).astype(np.float32)
+    shade = _mapgen_light(z_shade, az_deg=315.0, overhead=2.5)
+    # reference physical maps convey ocean depth by colour only, unshaded
+    shade = np.where(land, shade, np.float32(1.0)).astype(np.float32)
+    rgb *= np.clip(shade[..., None], 0.60, 1.25)
+    # saturation boost: shaded relief maps read "real" partly through richer colour
+    gray = rgb.mean(axis=2, keepdims=True)
+    rgb = np.clip(gray + (rgb - gray) * 1.08, 0.0, 1.0)
 
     # ---- rivers: dark blue-green, trunks wider than tributaries ----
     if rivers is not None and rivers.any():
@@ -1144,11 +1188,13 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
     render_earth_style(elev, temp, precip, os.path.join(out, "08c_earth_style.png"),
                        rivers=rivers, acc=river_acc, min_acc=river_min_acc,
                        land_mask=final_land, ice=ice)                      # Earth-like biomes
-    _colormap(temp, os.path.join(out, "09_temperature.png"), "turbo")
+    _colormap(temp, os.path.join(out, "09_temperature.png"),
+              "RdYlBu_r", vmin=-30.0, vmax=30.0)               # standard climate ramp
     _colormap(pressure, os.path.join(out, "10_pressure.png"), "coolwarm")
     _quiver_png(u, v, os.path.join(out, "11_wind.png"),
                 bg=_hypsometric(elev), step=28)
-    _colormap(precip, os.path.join(out, "12_precipitation.png"), "viridis")
+    _colormap(precip, os.path.join(out, "12_precipitation.png"),
+              "YlGnBu", vmin=60.0, vmax=4000.0, log=True)      # log mm, atlas style
     _label_png(koppen_code, KOPPEN_RGB, os.path.join(out, "13_koppen.png"))   # 17
     _discrete_png(ice.astype(int), {0: (20, 40, 80), 1: (235, 240, 245)},
                   os.path.join(out, "14_ice.png"))                            # 18
@@ -1234,12 +1280,14 @@ def _render_boundaries(bt, out_path):
     Image.fromarray(rgb).save(out_path)
 
 
-def _colormap(arr, out_path, cmap):
+def _colormap(arr, out_path, cmap, vmin=None, vmax=None, log=False):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
     fig, ax = plt.subplots(figsize=(arr.shape[1] / 100.0, arr.shape[0] / 100.0), dpi=100)
-    ax.imshow(arr, cmap=cmap)
+    norm = LogNorm(vmin=vmin, vmax=vmax) if log else None
+    ax.imshow(arr, cmap=cmap, vmin=vmin, vmax=vmax, norm=norm)
     ax.axis("off")
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     fig.savefig(out_path, dpi=100)

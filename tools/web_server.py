@@ -104,14 +104,16 @@ ELEV_STOPS = [
     (0.501, (150, 190, 110)), (1.0, (235, 225, 185)),
 ]
 
-# Simplified Köppen climate-zone palette (A/B/C/D/E/H) used by the web layer.
+# Simplified Köppen climate-zone palette using standard Köppen-Geiger hues
+# (A tropical = blues, B arid = red/orange, C temperate = greens,
+#  D continental = cyans, E polar = grey, H alpine = brown-grey).
 KOPPEN_PALETTE = numpy.array([
-    (46, 120, 60),    # A 热带
-    (200, 180, 110),  # B 干旱
-    (120, 170, 90),   # C 温带
-    (200, 120, 60),   # D 大陆性
-    (210, 230, 245),  # E 极地
-    (150, 150, 150),  # H 高山
+    (0, 110, 254),     # A 热带      (Köppen A blue)
+    (235, 80, 30),     # B 干旱      (Köppen B red-orange)
+    (110, 200, 90),    # C 温带      (Köppen C green)
+    (60, 170, 235),    # D 大陆性    (Köppen D cyan)
+    (178, 178, 178),   # E 极地      (Köppen E grey)
+    (150, 115, 90),    # H 高山      (alpine brown-grey)
 ], dtype=numpy.uint8)
 
 
@@ -339,9 +341,10 @@ def generate_world(params):
                                land_mask=final_land, ice=ice)
         images["elevation_relief"] = _img_to_b64(numpy.asarray(Image.open(rel_path)))
 
-    # Physical temperature and precipitation.
-    images["temperature"] = _arr_to_b64(temp, cmap="turbo")
-    images["precipitation"] = _arr_to_b64(precip, cmap="viridis")
+    # Physical temperature and precipitation (standard atlas colour schemes).
+    images["temperature"] = _arr_to_b64(temp, cmap="RdYlBu_r", vmin=-30.0, vmax=30.0)
+    p_log = numpy.log10(numpy.clip(precip, 60.0, None))
+    images["precipitation"] = _arr_to_b64(p_log, cmap="YlGnBu", vmin=1.78, vmax=3.60)
 
     # Simplified Köppen climate zones (overlay legend).
     koppen_idx = simple_koppen(temp, precip, elev)

@@ -89,3 +89,8 @@ junction_analysis/
 reference_maps/
 # Regenerable test-render outputs.
 test_out_smoke/
+
+
+
+# Cloned reference repositories (mapgen4, FMG, upstream worldengine).
+_reference_repos/
