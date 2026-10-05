@@ -161,28 +161,185 @@ def _place_cores(rng, n, shares, total_land, polar_first=False):
     return cores
 
 
+# Layout shares for the spec-driven 5-continent arrangement: one super
+# continent (Eurasia-like) + two near-connected pairs (Africa-like beside it,
+# N/S-America-like across an isthmus) + one oceanic-plate continent
+# (Australia-like).  Shares are of the total land.  The last one is small so
+# it cannot grow from the ocean-plate rim into the central pure-ocean zone.
+_LAYOUT_SHARES = numpy.array([0.31, 0.23, 0.19, 0.17, 0.10])
+
+# Angular radius of the central pure-ocean zone (the Pacific analogue): cores
+# are pushed out of it so the map centre reads as open ocean.
+_CENTRE_CLEARANCE = 0.55
+
+
+def _centre_clear(v):
+    """Penalty for cores sitting inside the central pure-ocean zone."""
+    d = math.acos(max(-1.0, min(1.0, float(numpy.dot(v, _CENTRE_VEC)))))
+    return max(0.0, _CENTRE_CLEARANCE - d)
+
+
+def _plate_cells(plates, g, step):
+    """Subsampled unit-vector cells of plate ``g`` -> (ys, xs, V(hypot x3)).
+
+    Polar cells (|lat| > ~57 deg, the permanent ice cap) are excluded so no
+    continent ever grows into the frozen zone.
+    """
+    h, w = plates.shape
+    ys, xs = numpy.nonzero(plates == g)
+    if not len(ys):
+        return None
+    if step > 1:
+        ys = ys[::step]
+        xs = xs[::step]
+    lat = (0.5 - (ys + 0.5) / h) * math.pi
+    keep = numpy.abs(lat) <= 1.00
+    ys, xs, lat = ys[keep], xs[keep], lat[keep]
+    if not len(ys):
+        return None
+    lon = ((xs + 0.5) / w) * TAU
+    cl = numpy.cos(lat)
+    V = numpy.stack([cl * numpy.cos(lon), numpy.sin(lat), cl * numpy.sin(lon)],
+                    axis=1).astype(numpy.float32)
+    return ys, xs, V
+
+
+_CENTRE_VEC = numpy.array([-1.0, 0.0, 0.0], dtype=numpy.float32)  # lon=pi, lat=0
+
+
+def _place_cores_layout(rng, shares, total_land, plates, plate_is_ocean):
+    """Spec-driven core placement: one super continent + two near-connected
+    pairs + one oceanic-plate continent (Australia-like).
+
+    Spread comes from farthest-point sampling across ALL continental plates
+    (so the layout cannot inherit plate clustering); only pair PARTNERS are
+    pinned near their leader, on a different continental plate.  The last
+    continent rides the oceanic plate near its far edge.  Every core still
+    belongs to its host plate, keeping crust type physically consistent.
+
+    Returns 5 unit-vector cores, or ``None`` when the plate layout cannot
+    host the arrangement (falls back to random farthest-point placement).
+    """
+    n_groups = int(plates.max()) + 1
+    ocean = numpy.zeros(n_groups, dtype=bool)
+    for i, flag in enumerate(plate_is_ocean):
+        if i < n_groups:
+            ocean[i] = bool(flag)
+    step = max(1, (plates.shape[0] * plates.shape[1]) // 60000)
+    cells = {g: _plate_cells(plates, g, step) for g in range(n_groups)}
+    areas = {g: (0 if cells[g] is None else len(cells[g][0])) for g in range(n_groups)}
+    cont = sorted((g for g in range(n_groups) if not ocean[g] and areas[g] > 0),
+                  key=lambda g: -areas[g])
+    oc = sorted((g for g in range(n_groups) if ocean[g] and areas[g] > 0),
+                key=lambda g: -areas[g])
+    if len(cont) < 4 or not oc:
+        return None
+
+    radii = [_core_radius(s * total_land) for s in shares]
+
+    def deepest(g):
+        ys, xs, V = cells[g]
+        cy, cx = ys.mean(), xs.mean()
+        dx = numpy.minimum(numpy.abs(xs - cx), plates.shape[1] - numpy.abs(xs - cx))
+        depth = numpy.sqrt((ys - cy) ** 2 + dx ** 2) / plates.shape[1]
+        pen = numpy.array([_centre_clear(v) for v in V], dtype=numpy.float32)
+        return V[int(numpy.argmax(depth - 3.0 * pen))]
+
+    def ang(a, b):
+        return math.acos(max(-1.0, min(1.0, float(numpy.dot(a, b)))))
+
+    def near_partner(g, target, r_self, r_other):
+        """Cell of plate ``g`` whose distance to ``target`` best matches a
+        near-connected pair (fields just touch / narrow strait), avoiding the
+        central pure-ocean zone when possible."""
+        ys, xs, V = cells[g]
+        d = numpy.arccos(numpy.clip(V @ target, -1.0, 1.0))
+        want = 0.72 * (r_self + r_other)
+        pen = numpy.array([_centre_clear(v) for v in V], dtype=numpy.float32)
+        return V[int(numpy.argmin(numpy.abs(d - want) + 2.5 * pen))]
+
+    cores = [deepest(cont[0])]                     # 0: super (Eurasia-like)
+    # 1: pair-A partner on another continental plate, hugging the super one
+    cores.append(near_partner(cont[1], cores[0], radii[1], radii[0]))
+    # 2: pair-B leader: farthest-point among remaining continental plates
+    free = sorted(set(cont[1:]) - {cont[1]}, key=lambda g: -areas[g])
+    if len(free) < 2:
+        return None
+    best_g, best_s = None, -1e18
+    for g in free:
+        v = deepest(g)
+        spread = min(ang(v, cores[0]), ang(v, cores[1]))
+        need = max(math.radians(24.0), 0.62 * (radii[2] + radii[0]))
+        score = spread - need - 3.0 * _centre_clear(v)
+        if score > best_s:
+            best_s, best_g = score, g
+    cores.append(deepest(best_g))                  # 2: pair-B leader
+    cores.append(near_partner(cont[3], cores[2], radii[3], radii[2]))
+    # 4: Australia-like on an oceanic plate's outer rim - as far from the map
+    # centre (the pure-ocean Pacific analogue) as possible, mild penalty for
+    # crowding the other continents
+    v_centre = _CENTRE_VEC
+    cand = []
+    for g in oc[:2]:
+        if cells[g] is not None:
+            cand.append(cells[g][2])
+    if not cand:
+        return None
+    V = numpy.concatenate(cand, axis=0)
+    centre_d = numpy.arccos(numpy.clip(V @ v_centre, -1.0, 1.0))
+    # hard clearance from every continent already placed
+    dmin = None
+    for i, c in enumerate(cores):
+        d = numpy.arccos(numpy.clip(V @ c, -1.0, 1.0))
+        dmin = d if dmin is None else numpy.minimum(dmin, d)
+    clear = dmin > 1.15 * (radii[4] + max(radii[:4]))
+    pool = numpy.nonzero(clear)[0] if clear.any() else numpy.arange(len(V))
+    crowd = dmin[pool] - 1.15 * (radii[4] + max(radii[:4]))
+    pick = pool[int(numpy.argmax(centre_d[pool] + 0.25 * crowd))]
+    cores.append(V[pick])
+    return [numpy.asarray(c, dtype=numpy.float32) for c in cores]
+
+
 def build_continents(seed, w, h, plates=None, plate_is_ocean=None,
-                     land_fraction=LAND_FRACTION, island_fraction=ISLAND_FRACTION):
-    """Return ``(land_mask, continent_mask)`` for an ``h x w`` equirect map."""
+                     land_fraction=LAND_FRACTION, island_fraction=ISLAND_FRACTION,
+                     layout_mode=True):
+    """Return ``(land_mask, continent_mask)`` for an ``h x w`` equirect map.
+
+    With ``layout_mode`` (and plates available) the world follows the spec:
+    5 continents - one super continent plus two near-connected pairs, the
+    last riding an oceanic plate - with cores constrained to their host
+    plates.  Otherwise the classic random farthest-point layout is used.
+    """
     rng = numpy.random.RandomState((seed * 69069) & 0x7FFFFFFF)
 
-    # --- continent count + size shares (Earth-like templates, jittered) ---
-    counts = sorted(_COUNT_W)
-    probs = [_COUNT_W[c] for c in counts]
-    n = counts[int(rng.choice(len(counts), p=probs))]
-    shares = numpy.asarray(_SHARE_TEMPLATES[n], dtype=numpy.float64)
-    shares *= rng.uniform(0.85, 1.15, size=n)
-    shares = numpy.sort(shares)[::-1]          # descending
-    shares = numpy.minimum(shares, _MAX_SHARE)
-    shares /= shares.sum()
-
     total_land = land_fraction + island_fraction
-    # ~half the worlds get one polar continent (Antarctica-like -> ice cap);
-    # it takes the smallest share so the polar cap stays small.
-    polar = n >= 5 and rng.rand() < 0.55
-    if polar:
-        shares = numpy.concatenate([[shares[-1]], shares[:-1]])
-    cores = _place_cores(rng, n, shares, total_land, polar_first=polar)
+
+    cores = None
+    if layout_mode and plates is not None and plate_is_ocean is not None:
+        shares = _LAYOUT_SHARES * rng.uniform(0.9, 1.1, size=len(_LAYOUT_SHARES))
+        shares /= shares.sum()
+        cores = _place_cores_layout(rng, shares, total_land, plates, plate_is_ocean)
+
+    if cores is not None:
+        n = len(cores)
+        polar = False
+    else:
+        # --- continent count + size shares (Earth-like templates, jittered) ---
+        counts = sorted(_COUNT_W)
+        probs = [_COUNT_W[c] for c in counts]
+        n = counts[int(rng.choice(len(counts), p=probs))]
+        shares = numpy.asarray(_SHARE_TEMPLATES[n], dtype=numpy.float64)
+        shares *= rng.uniform(0.85, 1.15, size=n)
+        shares = numpy.sort(shares)[::-1]          # descending
+        shares = numpy.minimum(shares, _MAX_SHARE)
+        shares /= shares.sum()
+        # ~half the worlds get one polar continent (Antarctica-like -> ice cap);
+        # it takes the smallest share so the polar cap stays small.
+        polar = n >= 5 and rng.rand() < 0.55
+        if polar:
+            shares = numpy.concatenate([[shares[-1]], shares[:-1]])
+        cores = _place_cores(rng, n, shares, total_land, polar_first=polar)
+
     P = _sphere_coords(h, w)
     P_flat = P.reshape(-1, 3)
 

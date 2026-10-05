@@ -181,8 +181,10 @@ def _slerp(a, b, t):
 def _place_seeds(seed, n_plates):
     """Farthest-point sampling on sphere.
 
-    Two equatorial oceanic seeds are placed first, then the remaining seeds
-    are placed at maximum angular distance from every seed already placed.
+    Two oceanic seeds are placed near the MAP CENTRE (lon=pi, the Pacific
+    analogue - deterministic per the spec) with a small random jitter, then
+    the remaining seeds are placed at maximum angular distance from every
+    seed already placed, so continental plates ring the central ocean.
     """
     if n_plates < 6:
         raise ValueError("n_plates must be >= 6 (two oceanic seeds are reserved)")
@@ -190,9 +192,9 @@ def _place_seeds(seed, n_plates):
     rng = numpy.random.RandomState((seed * 2654435761) & 0xFFFFFFFF)
     seeds = [None] * n_plates
 
-    # Ocean center: random point near equator
-    clat_c = rng.rand() * math.radians(20.0)
-    lon_c = (rng.rand() * 2.0 - 1.0) * math.pi
+    # Ocean center: near the map centre with a small equatorial jitter
+    clat_c = (rng.rand() * 2.0 - 1.0) * math.radians(8.0)
+    lon_c = math.pi
     cl, sl = math.cos(clat_c), math.sin(clat_c)
     C = numpy.array([cl * math.cos(lon_c), sl, cl * math.sin(lon_c)])
 
@@ -671,10 +673,24 @@ def generate_spherical_world(seed, w=512, h=512, n_raw=30, n_big=6,
         return pid, merged
 
     pid, merged = _plates_and_merge()
-    plate_is_ocean = [1 if g < DEFAULT_N_OCEAN else 0
-                      for g in range(int(merged.max()) + 1)]
+    # Spec: the two plates nearest the screen centre are the oceanic ones
+    # (Pacific/Atlantic analogues); everything else is a continental plate.
+    n_groups = int(merged.max()) + 1
+    gys, gxs = numpy.indices(merged.shape)
+    centre_rank = []
+    for g in range(n_groups):
+        m = merged == g
+        if not m.any():
+            continue
+        dx = numpy.minimum(gxs[m].mean(), w - gxs[m].mean()) - w / 2.0
+        dy = gys[m].mean() - h / 2.0
+        centre_rank.append((dx * dx + dy * dy, g))
+    centre_rank.sort()
+    oceanic = {g for _d, g in centre_rank[:min(2, len(centre_rank))]}
+    plate_is_ocean = [1 if g in oceanic else 0 for g in range(n_groups)]
     land_mask, continent_mask = build_continents(seed, w, h, plates=merged,
                                                  plate_is_ocean=plate_is_ocean,
+                                                 layout_mode=(n_big == len(PLATE_AREAS)),
                                                  **kwargs)
     return pid, merged, land_mask, continent_mask
 

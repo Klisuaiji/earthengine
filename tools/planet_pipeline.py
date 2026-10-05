@@ -264,6 +264,22 @@ def terrain_type_map(land_mask, boundaries, seed):
     conv = 2900.0 * np.exp(-cdist / 17.0) * lm * rugged
     land_elev = land_elev + conv + broad * 180.0
 
+    # basins: 0-2 low blocks deep inside continents (Sichuan-basin style),
+    # ringed by higher ground so they read as enclosed depressions
+    for _ in range(2):
+        if rng.random() < 0.25:
+            continue
+        cand = np.argwhere(lm & (d_ocean > 40))
+        if not len(cand):
+            break
+        cy, cx = cand[rng.integers(len(cand))]
+        r_px = rng.uniform(14.0, 26.0)
+        yy, xx = np.ogrid[:h, :w]
+        dist2 = (yy - cy) ** 2 + np.minimum(np.abs(xx - cx), w - np.abs(xx - cx)) ** 2
+        basin = np.clip(1.0 - dist2 / (r_px * r_px), 0.0, 1.0)
+        land_elev = land_elev - basin.astype(np.float32) * (420.0 + broad * 160.0)
+    land_elev = np.maximum(land_elev, 3.0)
+
     geo_elev = np.where(lm, land_elev, ocean).astype(np.float32)
 
     # --- classes -------------------------------------------------------------
@@ -1212,6 +1228,11 @@ def generate_planet(seed=1234567, w=1024, h=512, out="planet_out",
 
     if save_npy:
         np.save(os.path.join(out, "elevation.npy"), elev)
+        # 16-bit full-range elevation export for AI super-resolution prep
+        from PIL import Image as _PILImage
+        e16 = np.clip((elev + 8000.0) / 13000.0, 0.0, 1.0)
+        _PILImage.fromarray((e16 * 65535.0).astype(np.uint16), mode="I;16").save(
+            os.path.join(out, "elevation_16bit.png"))
         np.save(os.path.join(out, "terrain_class.npy"), terrain_class)
         np.save(os.path.join(out, "geo_elevation.npy"), geo_elev)
         np.save(os.path.join(out, "rivers.npy"), rivers)
@@ -1286,8 +1307,11 @@ def _colormap(arr, out_path, cmap, vmin=None, vmax=None, log=False):
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     fig, ax = plt.subplots(figsize=(arr.shape[1] / 100.0, arr.shape[0] / 100.0), dpi=100)
-    norm = LogNorm(vmin=vmin, vmax=vmax) if log else None
-    ax.imshow(arr, cmap=cmap, vmin=vmin, vmax=vmax, norm=norm)
+    if log:
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+        ax.imshow(arr, cmap=cmap, norm=norm)
+    else:
+        ax.imshow(arr, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.axis("off")
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     fig.savefig(out_path, dpi=100)
