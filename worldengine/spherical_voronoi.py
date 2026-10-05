@@ -326,6 +326,30 @@ def _partition_sphere(w, h, seeds, seed, n_plates, target_weights=None):
     return pid
 
 
+# --------------- Label smoothing (smooth plate boundaries) ---------------
+def _smooth_labels(labels, radius, iters=1):
+    """Majority-filter a label map so sawtooth cell borders become the long,
+    gently curved boundaries real tectonic maps show (图1).
+
+    Runs one uniform_filter per distinct label and keeps the per-pixel
+    argmax (a true mode filter), x-wrapping to respect the cylindrical map.
+    """
+    from scipy.ndimage import uniform_filter
+    size = 2 * int(radius) + 1
+    labs = labels.astype(numpy.int32).copy()
+    for _ in range(iters):
+        ids = numpy.unique(labs)
+        best = numpy.full(labs.shape, -numpy.inf, dtype=numpy.float32)
+        best_id = numpy.zeros(labs.shape, dtype=numpy.int32)
+        for k in ids:
+            s = uniform_filter((labs == k).astype(numpy.float32), size=size, mode="wrap")
+            m = s > best
+            best[m] = s[m]
+            best_id[m] = k
+        labs = best_id
+    return labs
+
+
 # --------------- Compute raw plate adjacency ---------------
 def _build_adjacency(pid, n_raw):
     """Vectorized raw plate adjacency graph from neighbor differences."""
@@ -655,6 +679,8 @@ def generate_spherical_world(seed, w=512, h=512, n_raw=30, n_big=6,
     def _plates_and_merge():
         seeds, ocean_center = _place_seeds(seed, n_raw)
         pid = _partition_sphere(w, h, seeds, seed, n_raw)
+        # smooth the micro-plate map so raw cells read as clean small plates
+        pid = _smooth_labels(pid, radius=max(2, w // 320), iters=1)
         pid = _cleanup_raw_plates(pid, n_raw)
         if n_big != len(PLATE_AREAS):
             # Legacy / non-reference mode: keep previous behaviour
@@ -670,6 +696,10 @@ def generate_spherical_world(seed, w=512, h=512, n_raw=30, n_big=6,
                                       n_continent=n_continent,
                                       target_areas=target_for_grow)
         merged = remove_enclaves(merged, min_frac=0.0005)
+        # spec 图1: plate boundaries are long, gently curved lines — majority-
+        # filter away the sawtooth cell borders, then absorb leftover slivers
+        merged = _smooth_labels(merged, radius=max(4, w // 128), iters=2)
+        merged = remove_enclaves(merged, min_frac=0.002)
         return pid, merged
 
     pid, merged = _plates_and_merge()

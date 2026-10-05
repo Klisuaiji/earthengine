@@ -64,18 +64,18 @@ app.json.sort_keys = False
 
 PLATE_PALETTE = numpy.array(
     [
-        (230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200), (245, 130, 48),
-        (145, 30, 180), (70, 240, 240), (240, 50, 230), (210, 245, 60), (250, 190, 190),
-        (0, 128, 128), (230, 190, 255), (170, 110, 40), (255, 250, 200), (128, 0, 0),
-        (170, 255, 195), (128, 128, 0), (255, 215, 180), (0, 0, 128), (128, 128, 128),
+        (168, 158, 124), (150, 170, 142), (181, 146, 111), (163, 150, 165), (140, 160, 176),
+        (192, 175, 140), (128, 152, 130), (172, 132, 108), (154, 164, 186), (186, 168, 152),
+        (138, 158, 150), (178, 158, 174), (160, 144, 118), (146, 166, 160), (170, 150, 130),
+        (150, 140, 156), (158, 172, 142), (184, 162, 138), (134, 148, 162), (166, 158, 148),
     ],
     dtype=float,
 )
 
 MERGED_PALETTE = numpy.array(
     [
-        (20, 70, 190), (70, 150, 235),
-        (90, 170, 80), (200, 180, 90), (180, 140, 80), (140, 190, 120),
+        (168, 158, 124), (140, 160, 176), (150, 170, 142),
+        (181, 146, 111), (163, 150, 165), (155, 168, 148),
     ],
     dtype=float,
 )
@@ -92,10 +92,10 @@ CONTINENT_PALETTE = numpy.array([
 ], dtype=numpy.uint8)
 
 BOUNDARY_PALETTE = numpy.array([
-    (240, 240, 250),  # INTERIOR
-    (160, 32, 240),   # CONVERGENT (purple)
-    (30, 180, 60),    # DIVERGENT (green)
-    (255, 140, 0),    # TRANSFORM (orange)
+    (245, 245, 248),   # INTERIOR
+    (37, 80, 190),     # CONVERGENT (blue: 海沟/造山带, 图1)
+    (220, 50, 50),     # DIVERGENT (red: 海岭/断层, 图1)
+    (150, 150, 150),   # TRANSFORM (grey: 转换断层)
 ], dtype=numpy.uint8)
 
 # Elevation colour stops: ocean (-10 m) -> blue, land (+10 m) -> warm.
@@ -104,36 +104,61 @@ ELEV_STOPS = [
     (0.501, (150, 190, 110)), (1.0, (235, 225, 185)),
 ]
 
-# Simplified Köppen climate-zone palette using standard Köppen-Geiger hues
-# (A tropical = blues, B arid = red/orange, C temperate = greens,
-#  D continental = cyans, E polar = grey, H alpine = brown-grey).
-KOPPEN_PALETTE = numpy.array([
-    (0, 110, 254),     # A 热带      (Köppen A blue)
-    (235, 80, 30),     # B 干旱      (Köppen B red-orange)
-    (110, 200, 90),    # C 温带      (Köppen C green)
-    (60, 170, 235),    # D 大陆性    (Köppen D cyan)
-    (178, 178, 178),   # E 极地      (Köppen E grey)
-    (150, 115, 90),    # H 高山      (alpine brown-grey)
+# Climate-type map (图4 textbook style): 12 named classes with the standard
+# Chinese-atlas hues, classified from annual temp / precip / elevation.
+CLIMATE_NAMES = [
+    "热带雨林气候", "热带草原气候", "热带沙漠气候",
+    "亚热带季风气候", "地中海气候", "温带海洋性气候",
+    "温带季风气候", "温带大陆性气候", "亚寒带针叶林气候",
+    "苔原气候", "冰原气候", "高原山地气候",
+]
+CLIMATE_PALETTE = numpy.array([
+    (0, 128, 96),      # 热带雨林   teal green
+    (150, 195, 115),   # 热带草原   light green
+    (245, 170, 70),    # 热带沙漠   orange
+    (55, 175, 80),     # 亚热带季风 vivid green
+    (195, 200, 95),    # 地中海     olive
+    (115, 185, 225),   # 温带海洋性 sky blue
+    (35, 120, 170),    # 温带季风   deep teal blue
+    (235, 225, 150),   # 温带大陆性 pale yellow
+    (70, 140, 185),    # 亚寒带针叶林 steel blue
+    (170, 195, 215),   # 苔原       pale blue grey
+    (238, 242, 246),   # 冰原       near white
+    (175, 125, 85),    # 高原山地   brown
 ], dtype=numpy.uint8)
 
 
 def simple_koppen(temp, precip, elev):
-    """Rough Köppen-style zoning from annual mean temp / precip / elevation.
+    """12-class climate-type map from annual means (annual-only proxy for the
+    textbook classification; monsoon/mediterranean seasonality is folded into
+    the precip bands)."""
+    t = numpy.asarray(temp, dtype=numpy.float32)
+    p = numpy.asarray(precip, dtype=numpy.float32)
+    out = numpy.zeros(t.shape, dtype=numpy.int32)
+    alpine = numpy.asarray(elev) > 2500.0
+    ice = t < -10.0
+    tundra = (t < 0.0) & ~ice
+    boreal = (t < 5.0) & ~tundra & ~ice
+    cold_temperate = (t < 18.0) & ~boreal & ~tundra & ~ice
+    tropical = t >= 20.0
+    subtrop = (t >= 15.0) & ~tropical & ~cold_temperate
 
-    Only annual means are available (no monthly series), so this is a coarse
-    classification good enough for an overlay legend, not a strict Köppen.
-    """
-    out = numpy.zeros(temp.shape, dtype=numpy.int32)
-    tropical = temp >= 20.0
-    polar = temp < 0.0
-    arid = precip < 250.0
-    alpine = elev > 2500.0
-    out[tropical & ~arid] = 0                               # A 热带
-    out[arid] = 1                                           # B 干旱
-    out[(temp >= 0) & (temp < 20) & ~arid & ~polar] = 2     # C 温带
-    out[(~arid) & (~polar) & (~alpine) & (temp < 0)] = 3    # D 大陆性（冬季<0）
-    out[polar] = 4                                          # E 极地
-    out[alpine] = 5                                         # H 高山
+    out[ice] = 10
+    out[tundra] = 9
+    out[alpine] = 11
+    out[boreal] = 8
+    # cold-temperate belt: maritime vs continental by precipitation
+    out[cold_temperate & (p >= 550.0)] = 5     # 温带海洋性
+    out[cold_temperate & (p < 300.0)] = 7      # 温带大陆性(干旱内陆)
+    out[cold_temperate & ~(p >= 550.0) & (p >= 300.0)] = 6   # 温带季风性
+    # subtropics: monsoon (wet) vs mediterranean (moderately dry)
+    out[subtrop & (p >= 900.0)] = 3
+    out[subtrop & (p < 550.0)] = 4
+    out[subtrop & (p >= 550.0) & (p < 900.0)] = 6
+    # tropics: rainforest / savanna / desert
+    out[tropical & (p >= 1500.0)] = 0
+    out[tropical & (p < 300.0)] = 2
+    out[tropical & (p >= 300.0) & (p < 1500.0)] = 1
     return out
 
 
@@ -301,19 +326,28 @@ def generate_world(params):
         render_terrain_types(terrain_class, tt_path)
         images["terrain_types"] = _img_to_b64(numpy.asarray(Image.open(tt_path)))
 
-    # Generated continents (the actual landmasses).
-    cont_idx = numpy.clip(continent_mask + 1, 0, CONTINENT_PALETTE.shape[0] - 1)
-    images["continents"] = _img_to_b64(CONTINENT_PALETTE[cont_idx.astype(numpy.int32)])
+    # Generated continents (图2 silhouette style): clean land/ocean map.
+    sil = numpy.full((h, w, 3), (247, 247, 247), dtype=numpy.uint8)
+    sil[final_land] = (35, 110, 190)
+    # 1px coast stroke for crispness at high zoom
+    coast = final_land[:, 1:] != final_land[:, :-1]
+    sil[:, 1:][coast] = (20, 60, 120)
+    sil[:, :-1][coast] = (20, 60, 120)
+    coastv = final_land[1:, :] != final_land[:-1, :]
+    sil[1:, :][coastv] = (20, 60, 120)
+    sil[:-1, :][coastv] = (20, 60, 120)
+    images["continents"] = _img_to_b64(sil)
 
     # Plate boundary classification (tectonic).
     bt = bnd["boundary_type"]
     images["boundary_types"] = _img_to_b64(BOUNDARY_PALETTE[bt.astype(numpy.int8)])
 
-    # Raw micro-plates.
+    # Raw micro-plates (muted earth tones).
     raw_rgb = numpy.resize(PLATE_PALETTE, (n_raw, 3))[raw.astype(int)].astype(numpy.uint8)
     images["raw_plates"] = _img_to_b64(raw_rgb)
 
-    # Merged major plates with anti-aliased black boundaries.
+    # Merged major plates, textbook-tectonic style (图1): muted fills with
+    # RED growth (divergent) / BLUE extinction (convergent) boundary lines.
     n_groups = int(merged.max()) + 1
     pal = numpy.resize(MERGED_PALETTE, (n_groups, 3))
     big_h, big_w = h * 2, w * 2
@@ -324,7 +358,16 @@ def generate_world(params):
     boundary = numpy.zeros((big_h, big_w), dtype=bool)
     boundary[:, 1:] |= labels_big[:, 1:] != labels_big[:, :-1]
     boundary[1:, :] |= labels_big[1:, :] != labels_big[:-1, :]
-    rgb_big[boundary] = [0, 0, 0]
+    bt_big = numpy.asarray(
+        Image.fromarray(bt.astype(numpy.uint8)).resize((big_w, big_h), Image.NEAREST)
+    )
+    conv_line = boundary & (bt_big == 1)      # 消亡边界 -> blue
+    div_line = boundary & (bt_big == 2)       # 生长边界 -> red
+    tr_line = boundary & (bt_big == 3)        # 转换断层 -> grey
+    rgb_big[boundary] = [40, 40, 46]
+    rgb_big[tr_line] = [150, 150, 150]
+    rgb_big[conv_line] = [30, 64, 175]
+    rgb_big[div_line] = [220, 38, 38]
     merged_rgb = numpy.asarray(Image.fromarray(rgb_big).resize((w, h), Image.BILINEAR))
     images["merged"] = _img_to_b64(merged_rgb)
 
@@ -341,14 +384,26 @@ def generate_world(params):
                                land_mask=final_land, ice=ice)
         images["elevation_relief"] = _img_to_b64(numpy.asarray(Image.open(rel_path)))
 
+    # Grayscale shaded-relief heightmap (图7 style; AI super-resolution input).
+    from planet_pipeline import _mapgen_light
+    shade = _mapgen_light(elev.astype(numpy.float32), az_deg=315.0, overhead=2.5)
+    grey = numpy.clip(0.42 + 0.52 * shade, 0.0, 1.0)
+    sea = ~final_land
+    grey[sea] = numpy.clip(0.30 + 0.20 * numpy.clip(
+        (elev[sea] + 6000.0) / 6000.0, 0.0, 1.0), 0.0, 1.0)
+    hm = (grey * 255.0).astype(numpy.uint8)
+    images["heightmap"] = _img_to_b64(numpy.stack([hm] * 3, axis=-1))
+
     # Physical temperature and precipitation (standard atlas colour schemes).
     images["temperature"] = _arr_to_b64(temp, cmap="RdYlBu_r", vmin=-30.0, vmax=30.0)
     p_log = numpy.log10(numpy.clip(precip, 60.0, None))
     images["precipitation"] = _arr_to_b64(p_log, cmap="YlGnBu", vmin=1.78, vmax=3.60)
 
-    # Simplified Köppen climate zones (overlay legend).
+    # Simplified climate-type zones (12 classes, textbook palette; ocean = light blue).
     koppen_idx = simple_koppen(temp, precip, elev)
-    images["koppen"] = _img_to_b64(KOPPEN_PALETTE[koppen_idx.astype(numpy.int32)])
+    koppen_rgb = numpy.full((h, w, 3), (168, 214, 240), dtype=numpy.uint8)
+    koppen_rgb[final_land] = CLIMATE_PALETTE[koppen_idx[final_land].astype(numpy.int32)]
+    images["koppen"] = _img_to_b64(koppen_rgb)
 
     # Ocean / land mask.
     om = numpy.zeros((h, w, 3), dtype=numpy.uint8)
@@ -384,38 +439,41 @@ def generate_world(params):
     layers_meta = {
         "elevation_relief": {"label": "真实地形", "cat": "地形", "overlay": True,
                               "desc": "气候分区地表色（沙漠/雨林/苔原/冰盖）+ 脊状山脉 + 河网"},
+        "heightmap":        {"label": "高程图", "cat": "地形", "overlay": True,
+                              "desc": "灰度山体阴影高程图（明 = 高，暗 = 低；AI 超分输入）"},
         "terrain_types":    {"label": "地貌类型", "cat": "地形", "overlay": True,
-                              "desc": "地理常理掩膜：平原/丘陵/高原/山脉，约束地形大尺度结构"},
+                              "desc": "地理常理掩膜：平原/丘陵/高原/山脉/盆地（手绘纹理）"},
         "merged":           {"label": "合并大板块", "cat": "板块", "overlay": True,
-                              "desc": "微板块合并为 N 大板块（黑线 = 边界）"},
+                              "desc": "红 = 生长边界 · 蓝 = 消亡边界 · 灰 = 转换断层"},
         "raw_plates":       {"label": "原始微板块", "cat": "板块", "overlay": True,
                               "desc": "球面 Voronoi 初始细分区"},
         "boundary_types":   {"label": "板块边界", "cat": "边界", "overlay": True,
-                              "desc": "生长(绿)/消亡(紫)/平移(橙)"},
-        "continents":       {"label": "生成大陆", "cat": "大陆", "overlay": True,
-                              "desc": "陆地板块即大陆，海洋板块为海"},
+                              "desc": "红 = 生长（海岭）· 蓝 = 消亡（海沟/造山）· 灰 = 平移"},
+        "continents":       {"label": "大陆轮廓", "cat": "大陆", "overlay": True,
+                              "desc": "海陆剪影：白 = 海 · 蓝 = 陆（图2 风格）"},
         "temperature":      {"label": "温度", "cat": "气候", "overlay": True,
                               "desc": "物理模型：纬度温度带 + 高程递减率 6.5 °C/km"},
         "precipitation":    {"label": "降水", "cat": "气候", "overlay": True,
-                              "desc": "物理模型：ITCZ/西风带 + 地形性迎风坡"},
-        "koppen":           {"label": "气候带", "cat": "气候", "overlay": True,
-                              "desc": "简化 Köppen：热带/干旱/温带/大陆性/极地/高山"},
+                              "desc": "物理模型：ITCZ/西风带 + 地形性迎风坡（对数毫米）"},
+        "koppen":           {"label": "气候类型", "cat": "气候", "overlay": True,
+                              "desc": "12 类标准气候分类（雨林/草原/沙漠/季风/地中海/针叶林…）"},
         "ocean_mask":       {"label": "海陆掩膜", "cat": "海陆", "overlay": True,
                               "desc": "蓝 = 海 · 绿 = 陆"},
     }
 
-    # Ordered generation timeline for the "查看生成过程" viewer.
+    # Ordered generation timeline for the "查看生成过程" viewer (spec flow:
+    # 板块 → 大陆 → 地貌掩层 → 气候掩层 → 细化地貌 → 着色 → 高程导出).
     process = [
         {"key": "raw_plates",      "label": "① 原始微板块", "desc": "球面 Voronoi 初始细分区"},
-        {"key": "merged",          "label": "② 合并大板块", "desc": "微板块合并为 N 大板块"},
-        {"key": "continents",      "label": "③ 生成大陆",   "desc": "大陆核生长 + 分形海岸与岛屿"},
-        {"key": "boundary_types",  "label": "④ 板块边界",   "desc": "生长/消亡/平移分类"},
-        {"key": "terrain_types",   "label": "⑤ 地貌类型",   "desc": "地理常理：平原/丘陵/高原/山脉"},
-        {"key": "elevation_relief","label": "⑥ 真实地形",   "desc": "脊状山脉纹理 + D8 河网 + 参考图设色"},
-        {"key": "temperature",     "label": "⑦ 温度",       "desc": "物理温度模型"},
-        {"key": "precipitation",   "label": "⑧ 降水",       "desc": "物理降水模型"},
-        {"key": "koppen",          "label": "⑨ 气候带",     "desc": "简化 Köppen 分类"},
-        {"key": "ocean_mask",      "label": "⑩ 海陆掩膜",   "desc": "最终海陆二值掩膜"},
+        {"key": "merged",          "label": "② 合并大板块", "desc": "中心双海洋板块 + 红生长/蓝消亡边界"},
+        {"key": "continents",      "label": "③ 大陆轮廓",   "desc": "超级大陆 + 两对近连 + 澳洲式，海陆剪影"},
+        {"key": "boundary_types",  "label": "④ 板块边界",   "desc": "生长/消亡/转换分类"},
+        {"key": "terrain_types",   "label": "⑤ 地貌类型",   "desc": "平原/丘陵/高原/山脉/盆地掩层（图3）"},
+        {"key": "elevation_relief","label": "⑥ 真实地形",   "desc": "脊状山脉 + D8 河网 + 气候着色（图5/6）"},
+        {"key": "koppen",          "label": "⑦ 气候类型",   "desc": "12 类标准气候掩层（图4）"},
+        {"key": "temperature",     "label": "⑧ 温度",       "desc": "物理温度模型"},
+        {"key": "precipitation",   "label": "⑨ 降水",       "desc": "物理降水模型（对数）"},
+        {"key": "heightmap",       "label": "⑩ 高程图",     "desc": "灰度高程导出（AI 超分输入，图7）"},
     ]
 
     return {

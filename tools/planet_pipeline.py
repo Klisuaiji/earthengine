@@ -192,8 +192,8 @@ def coarse_conditioning_grid(coarse_elev, land_mask):
 #  terrain-type map (地理常理): plains / hills / plateaus / mountain ranges
 # ===========================================================================
 # terrain-class codes (stable for downstream colouring)
-TT_DEEP, TT_SHELF, TT_PLAIN, TT_HILL, TT_PLATEAU, TT_MOUNTAIN = 0, 1, 2, 3, 4, 5
-TERRAIN_NAMES = ["深海", "大陆架", "平原", "丘陵", "高原", "山脉"]
+TT_DEEP, TT_SHELF, TT_PLAIN, TT_HILL, TT_PLATEAU, TT_MOUNTAIN, TT_BASIN = 0, 1, 2, 3, 4, 5, 6
+TERRAIN_NAMES = ["深海", "大陆架", "平原", "丘陵", "高原", "山脉", "盆地"]
 TERRAIN_RGB = {
     TT_DEEP: (16, 38, 74),
     TT_SHELF: (56, 110, 168),
@@ -201,6 +201,7 @@ TERRAIN_RGB = {
     TT_HILL: (196, 184, 106),
     TT_PLATEAU: (156, 116, 74),
     TT_MOUNTAIN: (168, 168, 174),
+    TT_BASIN: (150, 100, 140),
 }
 
 
@@ -266,6 +267,7 @@ def terrain_type_map(land_mask, boundaries, seed):
 
     # basins: 0-2 low blocks deep inside continents (Sichuan-basin style),
     # ringed by higher ground so they read as enclosed depressions
+    basin_mask = np.zeros((h, w), dtype=bool)
     for _ in range(2):
         if rng.random() < 0.25:
             continue
@@ -278,6 +280,7 @@ def terrain_type_map(land_mask, boundaries, seed):
         dist2 = (yy - cy) ** 2 + np.minimum(np.abs(xx - cx), w - np.abs(xx - cx)) ** 2
         basin = np.clip(1.0 - dist2 / (r_px * r_px), 0.0, 1.0)
         land_elev = land_elev - basin.astype(np.float32) * (420.0 + broad * 160.0)
+        basin_mask |= basin > 0.35
     land_elev = np.maximum(land_elev, 3.0)
 
     geo_elev = np.where(lm, land_elev, ocean).astype(np.float32)
@@ -289,6 +292,7 @@ def terrain_type_map(land_mask, boundaries, seed):
     terrain_class[lm & (geo_elev >= 1100) & (geo_elev < 2000)] = TT_PLATEAU
     terrain_class[lm & (geo_elev >= 350) & (geo_elev < 1100)] = TT_HILL
     terrain_class[lm & (geo_elev < 350)] = TT_PLAIN
+    terrain_class[basin_mask & lm & (geo_elev < 1100)] = TT_BASIN
     return geo_elev, terrain_class
 
 
@@ -398,14 +402,30 @@ def trace_rivers(elev, land_mask, min_acc=None, max_rivers=400):
     return rivers, acc.reshape(h, w)
 
 
-def render_terrain_types(terrain_class, out_path):
-    """Flat-colour terrain-type map (the 'mask colouring' steering image)."""
+def render_terrain_types(terrain_class, out_path, seed=97):
+    """Flat-colour terrain-type map with hand-coloured mottling (图3 style).
+
+    Each class gets multi-octave brightness variation so blocks read like a
+    printed atlas terrain map; mountain pixels get laterally streaked noise
+    so ranges look brush-drawn rather than flat-filled.
+    """
     from PIL import Image
-    pal = np.zeros((len(TERRAIN_RGB), 3), dtype=np.uint8)
+    from scipy.ndimage import gaussian_filter
+    cls = terrain_class.astype(np.int32)
+    pal = np.zeros((len(TERRAIN_RGB), 3), dtype=np.float32)
     for k, col in TERRAIN_RGB.items():
         pal[k] = col
-    rgb = pal[terrain_class.astype(np.int32)]
-    Image.fromarray(rgb).save(out_path)
+    h, w = cls.shape
+    rgb = pal[cls].copy()
+    fine = (_fbm((h, w), base_scale=6, octaves=4, seed=seed) - 0.5) * 0.20
+    broad = (_fbm((h, w), base_scale=26, octaves=2, seed=seed + 3) - 0.5) * 0.14
+    shade = 1.0 + fine + broad
+    # directional streaks inside mountain/plateau bodies (brush strokes)
+    streak = gaussian_filter(fine, sigma=(0.5, 4.0)) * 1.6
+    streaked = (cls == TT_MOUNTAIN) | (cls == TT_PLATEAU)
+    shade[streaked] = 1.0 + streak[streaked] + broad[streaked]
+    rgb *= shade[..., None]
+    Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).save(out_path)
     return out_path
 
 
