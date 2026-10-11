@@ -242,10 +242,13 @@ class WorldValidator:
         bt = ws.boundaries.get("boundary_type") if ws.boundaries else None
         if bt is None:
             return
+        # scipy 为核心必需依赖；缺失即环境错误，不得静默跳过该关键检查。
         try:
             from scipy.ndimage import distance_transform_edt
-        except Exception:
-            return
+        except Exception as e:
+            raise RuntimeError(
+                "scipy 为必需核心依赖，缺失导致无法计算 mountain_convergent "
+                "检查（pip install scipy）。原错误: " + repr(e)) from e
         terr = ws.terrain["region"]
         conv = bt == CONVERGENT
         if not conv.any():

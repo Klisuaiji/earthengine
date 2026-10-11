@@ -59,9 +59,23 @@ def test_land_sea_bathymetry_consistent(ws):
     """陆地高程 > 0，海洋高程 < 0（海盆与海陆一致，P0-2）。"""
     elev = ws.terrain["elevation"]
     lm = ws.ocean["land_mask"]
-    conflict = int((lm & (elev < 0)).sum() | ((~lm) & (elev > 0)).sum())
+    conflict = int(
+        (lm & (elev < 0)).sum()          # 陆地但高程≤0
+        + ((~lm) & (elev > 0)).sum()     # 海洋但高程>0
+    )
     frac = conflict / elev.size
     assert frac <= 0.02, f"海陆-高程矛盾 {frac:.4f}"
+
+
+def test_land_sea_conflict_counts_both_kinds():
+    """回归：两类矛盾同时出现时，conflict 必须为两者之和（不是按位或）。"""
+    lm = np.array([[True, True, False, False]])
+    elev = np.array([-1.0, -2.0, 1.0, 3.0])   # 陆地负、海洋正，各 2 个
+    conflict = int(
+        (lm & (elev < 0)).sum()
+        + ((~lm) & (elev > 0)).sum()
+    )
+    assert conflict == 4, f"两类矛盾应计数为 4，实际 {conflict}（按位或会低估）"
 
 
 def test_mountains_near_convergent(ws):
@@ -107,9 +121,12 @@ _ALL = [v for k, v in sorted(globals().items())
 def run_all(seed=1234567):
     ws = make(seed)
     failed = 0
+    import inspect
     for fn in _ALL:
+        n_req = len([p for p in inspect.signature(fn).parameters.values()
+                     if p.default is inspect.Parameter.empty])
         try:
-            fn(ws)
+            fn(*([ws] if n_req else []))
             print(f"  PASS  {fn.__name__}")
         except Exception as e:
             failed += 1

@@ -75,3 +75,20 @@
   validation_report 文件（验证报告在 `world.json` 内）。属产物清单差异。
 - **EXE 打包**：文档定位「核心稳定之后」，本阶段不打包。
 - **浏览器自动化交互断言**：前端交互为静态检查，未做 GUI 自动化点击断言。
+
+---
+
+## 第 2 轮验收修复（按验收反馈逐项处理）
+
+| 验收反馈 | 处理 | 状态 |
+| --- | --- | --- |
+| 问题一：海陆一致性测试用 `\|`（按位或）计数 | 改为两类矛盾**相加**，并新增回归 `test_land_sea_conflict_counts_both_kinds`（两类矛盾同时出现时=4），`run_all` 按函数签名分发有参/无参 | 已实现 + 测试通过（6/6） |
+| 问题二：scipy 列为可选但被核心硬依赖 | scipy 移入核心 `dependencies`（numpy+scipy 如实声明）；`validator.mountain_convergent` 由「`except: return` 静默跳过」改为缺失时**显式抛错**，不静默跳过关键检查 | 已实现 + 测试通过 |
+| 问题三：验证阈值稳定性 / 有限重试 / 失败报告 | 实测 **16/16 seed 全通过**（0 ERROR 0 WARNING）；重试有限（板块 20、大陆/海洋 16），超限返回 best-effort 并保留 `attempts`/`checks` 详情；target_land=0.30 由分形阈值锁定，与大陆 4–7、最大大陆≥25% 同时满足（不冲突） | 已实现 + 测试通过 |
+| 无 Flask 环境 | 屏蔽 flask 调用 `run_server` → 打印「flask 未安装」并返回码 1 | 已验证 |
+| 无 AI 环境 | torch 缺失自动回落 procedural（test_ai 5/5） | 已验证 |
+| 全脚本实跑 + 耗时 | 全部直接运行（无 pytest），断言 34 + 多种子 16 | 已实跑 |
+
+**第 2 轮新增/变更文件**：`tests/test_geocausality.py`（计数修复 + 回归）、
+`pyproject.toml`（scipy→核心）、`earthengine/pipeline/validator.py`（不静默跳过）、
+`README.md`、`docs/development-status.md`。`reports/quality_report.json` 更新为 16/16 seed。

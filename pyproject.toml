@@ -25,14 +25,16 @@ classifiers = [
     "Topic :: Games/Entertainment :: Simulation",
     "Topic :: Scientific/Engineering",
 ]
-# v2.0 依赖极简原则 (4.4): 核心运行时仅 numpy。
-# scipy / Pillow 为可选加速与出图；缺失时走纯 numpy 回退路径。
+# v2.0 依赖如实声明：核心运行时必需 numpy + scipy。
+# scipy 被核心生成/验证大量硬依赖（tectonics/terrain/ocean/hydrology/
+# geology/validator/geography_validator 内联 import），不是可选；
+# 缺失时核心流程会失败，故将其作为必需依赖，避免"静默跳过关键检查"。
 dependencies = [
     "numpy>=1.24.0",
+    "scipy>=1.10.0",
 ]
 
 [project.optional-dependencies]
-scipy = ["scipy>=1.10.0"]
 image = ["Pillow>=10.0.0"]
 web = ["flask>=3.0.0"]
 ai = [

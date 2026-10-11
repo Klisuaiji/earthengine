@@ -58,23 +58,26 @@ docs/          本套文档
 | --- | --- | --- |
 | `tests/run_checks.py` | 阶段依赖闭包、海陆-高程、山脉/海沟/纬度因果 | 8/8 |
 | `tests/test_pipeline.py` | 依赖闭包 DAG、验证器分级（ERROR 决定通过） | 7/7 |
-| `tests/test_geocausality.py` | 地壳独立于 plate ID、海陆-水深一致、山脉/海沟落汇聚边界 | 5/5 |
+| `tests/test_geocausality.py` | 地壳独立于 plate ID、海陆-水深一致、山脉/海沟落汇聚边界 | 6/6 |
 | `tests/test_ai.py` | AI 接口契约、procedural fallback、registry、device | 5/5 |
 | `tests/test_web.py` | Web envelope/参数校验/错误分类/生成产图层 | 8/8 |
-| `tests/quality_report.py` | 多 seed 质量报告 → `reports/quality_report.json` | 7/7 seed |
+| `tests/quality_report.py` | 多 seed 质量报告 → `reports/quality_report.json` | 16/16 seed |
 
-合计 40 项（阶段 A–D 开发后新增 25 项）。
+断言合计 34 项 + 多种子稳定性 16/16 seed。
 
 ## 文档
 
 `docs/`：architecture、planet、tectonics、ocean、terrain、climate、hydrology、
-geology、terrain-diffusion、world-state、pipeline、validator、cli、api、development。
+geology、terrain-diffusion、world-state、pipeline、validator、cli、api、
+development、development-status（阶段 A–E 完成报告）。
 
 ## 依赖
 
-核心仅 `numpy`；`scipy`（可选，细化/验证加速）、`Pillow`（可选，PNG 出图）、
-`flask`（可选，Web）、`torch + terrain_diffusion`（可选，AI 增强，缺失自动回落
-程序化实现）。
+核心运行时如实声明为 **numpy + scipy**：scipy 被核心生成/验证硬依赖
+（tectonics/terrain/ocean/hydrology/geology/validator/geography_validator 内联
+import），缺失时 `validator` 显式报错而非静默跳过关键检查。
+`Pillow`（可选，PNG 出图）、`flask`（可选，Web，缺失时 `run_server` 打印提示
+并返回码 1）、`torch + terrain_diffusion`（可选，AI 增强，缺失自动回落程序化实现）。
 
 ## 许可证与商业授权
 
