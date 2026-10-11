@@ -52,6 +52,19 @@ docs/          本套文档
 逆坡河段=0、山脉-汇聚边界相关 ≥0.60、纬度-温度 zonal |r|≥0.70、陆地占比、
 最大大陆、板块面积基尼等。失败即重滚 seed，而非修补地图。
 
+### 回归测试（python3 tests/*.py，无 pytest 依赖）
+
+| 脚本 | 覆盖 | 状态 |
+| --- | --- | --- |
+| `tests/run_checks.py` | 阶段依赖闭包、海陆-高程、山脉/海沟/纬度因果 | 8/8 |
+| `tests/test_pipeline.py` | 依赖闭包 DAG、验证器分级（ERROR 决定通过） | 7/7 |
+| `tests/test_geocausality.py` | 地壳独立于 plate ID、海陆-水深一致、山脉/海沟落汇聚边界 | 5/5 |
+| `tests/test_ai.py` | AI 接口契约、procedural fallback、registry、device | 5/5 |
+| `tests/test_web.py` | Web envelope/参数校验/错误分类/生成产图层 | 8/8 |
+| `tests/quality_report.py` | 多 seed 质量报告 → `reports/quality_report.json` | 7/7 seed |
+
+合计 40 项（阶段 A–D 开发后新增 25 项）。
+
 ## 文档
 
 `docs/`：architecture、planet、tectonics、ocean、terrain、climate、hydrology、

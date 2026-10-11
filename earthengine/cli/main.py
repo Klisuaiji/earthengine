@@ -47,11 +47,15 @@ def cmd_generate(args):
     validator = WorldValidator(cfg)
     ok, report = validator.validate(ws)
     ws.validation = report
+    n_err = len(report["errors"])
+    n_warn = len(report["warnings"])
     print(f"[generate] seed={cfg['seed']} {ws.w}x{ws.h} "
           f"land={float(ws.ocean['land_mask'].mean()):.3f} "
           f"civ_pts={len(ws.civilization['points'])} "
-          f"overall={report['scores']['overall']:.2f} OK={ok} "
+          f"OK={ok} errors={n_err} warnings={n_warn} "
           f"({time.time()-t0:.1f}s)")
+    for e in report["errors"]:
+        print("  ERROR:", e["message"])
     export_world(ws, out, render=True)
     print(f"[generate] exported -> {out}")
     return out
@@ -72,19 +76,22 @@ def cmd_validate(args):
     import numpy as np
     z = np.load(os.path.join(world_dir, "fields.npz"))
     ws = WorldState(seed=1)
-    h, w = z["terrain.elevation_macro"].shape
     ws.ocean = {"land_mask": z["ocean.land_mask"]}
-    ws.boundaries = {"boundary_type": z.get("boundaries.type", None) if "boundaries.type" in z else None}
+    ws.boundaries = {"boundary_type": z["boundaries.type"] if "boundaries.type" in z else None}
     ws.terrain = {"region": z["terrain.region"],
                   "elevation": z["terrain.elevation"] if "terrain.elevation" in z else z["terrain.elevation_macro"]}
     ws.plates = type("P", (), {"plates": z["plates.id"]})()
-    ws.climate = {"temperature": z["atmosphere.temperature"]}
-    ws.hydrology = {"uphill_segments": 0}
+    ws.climate = {"temperature": z["atmosphere.temperature"],
+                  "precipitation": z["climate.precipitation"] if "climate.precipitation" in z else np.zeros(z["atmosphere.temperature"].shape)}
+    ws.hydrology = {"uphill_segments": 0,
+                    "flow_dir": z["hydrology.flow_dir"] if "hydrology.flow_dir" in z else np.zeros(z["terrain.region"].shape, np.uint8)}
     v = WorldValidator()
     ok, report = v.validate(ws)
-    print(f"[validate] overall={report['scores']['overall']:.2f} OK={ok}")
-    for m in report["messages"]:
-        print("  " + m)
+    print(f"[validate] OK={ok} errors={len(report['errors'])} warnings={len(report['warnings'])}")
+    for e in report["errors"]:
+        print("  ERROR:", e["message"])
+    for w in report["warnings"]:
+        print("  WARN :", w["message"])
     return 0 if ok else 1
 
 

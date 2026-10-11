@@ -16,6 +16,12 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
+# 允许直接 `python3 tests/run_checks.py`：把仓库根加进 sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 
 from earthengine.pipeline.stages import WorldGenerator

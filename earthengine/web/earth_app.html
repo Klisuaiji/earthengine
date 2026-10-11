@@ -3,771 +3,313 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="data:,">
-<title>地球生成器 · WorldEngine</title>
+<title>EarthEngine v2.0 · 世界工作台</title>
 <style>
   :root{
-    --bg:#0c0f16; --panel:#141925; --panel-2:#1b2230; --border:#2a3344;
-    --text:#e6ebf2; --muted:#9aa6b8; --accent:#4aa3ff; --accent-2:#36d399;
-    --ocean:#2b6cb0; --warn:#f6ad55; --danger:#fc6a6a;
-    --shadow:0 8px 28px rgba(0,0,0,.45);
+    --bg:#f4f7f3; --panel:#ffffff; --border:#d7e0d4; --accent:#3d8b4e;
+    --accent-soft:#e8f4e9; --text:#2c332d; --muted:#7b8579; --grid:#c9d4c6;
+    --radius:4px; --shadow:0 1px 2px rgba(30,60,40,.06);
   }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg); color:var(--text); overflow:hidden; user-select:none;
-  }
-  /* ---- top bar ---- */
-  .topbar{
-    height:52px; display:flex; align-items:center; gap:14px; padding:0 18px;
-    background:linear-gradient(180deg,#161d2b,#10141d); border-bottom:1px solid var(--border);
-    position:relative; z-index:30;
-  }
-  .brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:16px; letter-spacing:.3px}
-  .brand .dot{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#7cc4ff,#1f6fb2 70%);box-shadow:0 0 12px rgba(74,163,255,.5)}
-  .brand small{color:var(--muted); font-weight:500; font-size:12px}
-  .topbar .spacer{flex:1}
-  .coord{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--panel);padding:6px 12px;border-radius:8px;border:1px solid var(--border)}
-
-  /* ---- layout ---- */
-  .layout{display:flex; height:calc(100vh - 52px); position:relative}
-
-  /* ---- left panel ---- */
-  .left{
-    width:320px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border);
-    display:flex; flex-direction:column; transition:width .25s ease, margin-left .25s ease; overflow:hidden; z-index:20;
-  }
-  .left.collapsed{width:0; margin-left:0; border-right:none}
-  .left-inner{width:320px; display:flex; flex-direction:column; height:100%}
-  .left-head{display:flex; align-items:center; justify-content:space-between; padding:16px 18px 10px}
-  .left-head h1{margin:0; font-size:17px; font-weight:700}
-  .left-head .sub{font-size:11px;color:var(--muted);margin-top:2px}
-  .icon-btn{
-    width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);
-    color:var(--muted); cursor:pointer; font-size:15px; display:flex;align-items:center;justify-content:center;
-  }
-  .icon-btn:hover{color:var(--text);border-color:var(--accent)}
-  .left-body{padding:8px 18px 18px; overflow-y:auto; flex:1}
-  .left-body::-webkit-scrollbar{width:8px}
-  .left-body::-webkit-scrollbar-thumb{background:#283041;border-radius:4px}
-  .group{margin-bottom:20px}
-  .group > .glabel{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;font-weight:600}
-  .field{margin-bottom:14px}
-  .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--text);margin-bottom:6px}
-  .field label .v{color:var(--accent);font-variant-numeric:tabular-nums;font-size:12px}
-  input[type=number],input[type=text]{
-    width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:8px;
-    color:var(--text);font-size:14px;font-family:inherit;
-  }
-  input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--accent)}
-  input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:var(--border);outline:none}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 0 3px rgba(74,163,255,.2)}
-  input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
-  .seed-row{display:flex;gap:8px}
-  .seed-row input{flex:1}
-  .btn{
-    width:100%;padding:11px 16px;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;
-  }
-  .btn:hover{filter:brightness(1.08)}
-  .btn-primary{background:linear-gradient(180deg,#3a8dff,#2f6fe0);color:#fff}
-  .btn-primary:disabled{background:var(--panel-2);color:var(--muted);cursor:not-allowed;filter:none}
-  .btn-row{display:flex;gap:10px;margin-top:6px}
-  .btn-row .btn{flex:1}
-  .btn-ghost{background:var(--panel-2);border:1px solid var(--border);color:var(--text)}
-  .stats-mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
-  .stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
-  .stat .val{font-size:16px;font-weight:700;color:var(--accent)}
-  .stat .lbl{font-size:11px;color:var(--muted);margin-top:2px}
-  .left-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);line-height:1.5}
-
-  /* expand tab (when collapsed) */
-  .expand-tab{
-    position:absolute;left:0;top:14px;z-index:25;display:none;align-items:center;gap:6px;
-    background:var(--panel);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;
-    padding:8px 12px;cursor:pointer;color:var(--muted);font-size:13px;
-  }
-  .expand-tab:hover{color:var(--text)}
-
-  /* ---- center ---- */
-  .center{flex:1; display:flex; flex-direction:column; min-width:0; position:relative}
-  .map-toolbar{
-    height:46px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 14px;
-    background:var(--panel);border-bottom:1px solid var(--border);z-index:15;
-  }
-  .map-toolbar .layer-name{font-size:13px;font-weight:600;color:var(--text)}
-  .map-toolbar .layer-name small{color:var(--muted);font-weight:400;margin-left:6px}
-  .map-toolbar .spacer{flex:1}
-  .tool{
-    width:32px;height:32px;border-radius:7px;border:1px solid var(--border);background:var(--panel-2);
-    color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;
-  }
-  .tool:hover{color:var(--text);border-color:var(--accent)}
-  .tool.active{color:var(--accent);border-color:var(--accent)}
-  .zoom-label{font-size:12px;color:var(--muted);min-width:42px;text-align:center;font-variant-numeric:tabular-nums}
-
-  .map-viewport{
-    flex:1; position:relative; overflow:hidden; background:
-      radial-gradient(circle at 50% 40%, #11203a 0%, #0a0e16 70%);
-    cursor:grab;
-  }
-  .map-viewport.grabbing{cursor:grabbing}
-  .stage{position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform}
-  .stage img{position:absolute; top:0; left:0; display:block; image-rendering:auto; pointer-events:none}
-  #baseImg{position:relative !important}
-  #overlayCanvas{position:absolute;top:0;left:0;pointer-events:none;z-index:5}
-
-  /* center status box */
-  .status-box{
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;
-    background:rgba(16,21,33,.92);border:1px solid var(--border);border-radius:14px;
-    padding:22px 26px;text-align:center;box-shadow:var(--shadow);min-width:240px;
-  }
-  .status-box .spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .status-box .title{font-size:15px;font-weight:600;margin-bottom:4px}
-  .status-box .hint{font-size:12px;color:var(--muted);margin-bottom:14px}
-  .status-box .process-link{
-    display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);
-    background:rgba(74,163,255,.12);border:1px solid rgba(74,163,255,.3);padding:7px 12px;border-radius:8px;cursor:pointer;
-  }
-  .status-box .process-link:hover{background:rgba(74,163,255,.2)}
-  .status-box.error .title{color:var(--danger)}
-
-  /* legend */
-  .legend{
-    position:absolute;right:14px;bottom:14px;z-index:8;background:rgba(16,21,33,.9);
-    border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;max-width:200px;display:none;
-  }
-  .legend h4{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:600}
-  .legend .row{display:flex;align-items:center;gap:8px;margin:4px 0}
-  .legend .sw{width:14px;height:14px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,.15)}
-
-  /* ---- right rail ---- */
-  .right{
-    width:66px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);
-    display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px;z-index:20;position:relative;
-  }
-  .rail-btn{
-    width:48px;height:48px;border-radius:11px;border:1px solid transparent;background:transparent;color:var(--muted);
-    cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;
-    transition:background .15s,color .15s;
-  }
-  .rail-btn .em{font-size:19px;line-height:1}
-  .rail-btn:hover{background:var(--panel-2);color:var(--text)}
-  .rail-btn.active{background:rgba(74,163,255,.14);color:var(--accent);border-color:rgba(74,163,255,.35)}
-  .rail-sep{width:36px;height:1px;background:var(--border);margin:6px 0}
-
-  /* rail popover */
-  .popover{
-    position:absolute;right:74px;top:8px;width:226px;background:var(--panel-2);border:1px solid var(--border);
-    border-radius:12px;box-shadow:var(--shadow);padding:8px;z-index:40;display:none;
-  }
-  .popover.show{display:block}
-  .popover .ph{font-size:12px;color:var(--muted);padding:4px 8px 8px;font-weight:600;border-bottom:1px solid var(--border);margin-bottom:6px}
-  .layer-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer}
-  .layer-row:hover{background:var(--panel)}
-  .layer-row .nm{flex:1;font-size:13px}
-  .layer-row .set{font-size:11px;color:var(--accent);background:rgba(74,163,255,.12);padding:3px 8px;border-radius:6px;opacity:0;transition:opacity .12s}
-  .layer-row:hover .set{opacity:1}
-  .layer-row .ov{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
-  .layer-row input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
-
-  /* ---- process modal ---- */
-  .modal{position:fixed;inset:0;background:rgba(6,9,15,.82);z-index:60;display:none;align-items:center;justify-content:center;padding:40px}
-  .modal.show{display:flex}
-  .modal-box{width:min(1100px,94vw);max-height:86vh;background:var(--panel);border:1px solid var(--border);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow)}
-  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-  .modal-head h3{margin:0;font-size:16px}
-  .modal-head .sub{font-size:12px;color:var(--muted)}
-  .modal-body{overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-  .modal-body::-webkit-scrollbar{width:8px}
-  .modal-body::-webkit-scrollbar-thumb{background:#283041;border-radius:4px}
-  .pstage{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-  .pstage img{width:100%;display:block;image-rendering:auto}
-  .pstage .meta{padding:10px 12px}
-  .pstage .meta .n{color:var(--accent);font-weight:700;font-size:12px}
-  .pstage .meta .t{font-size:14px;font-weight:600;margin:3px 0}
-  .pstage .meta .d{font-size:12px;color:var(--muted);line-height:1.45}
-
-  /* toast */
-  .toast{
-    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);z-index:80;
-    background:var(--panel-2);border:1px solid var(--accent);color:var(--text);padding:10px 18px;border-radius:10px;
-    font-size:13px;opacity:0;transition:opacity .2s,transform .2s;box-shadow:var(--shadow);pointer-events:none;
-  }
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{font:12px/1.5 "Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+       background:var(--bg); color:var(--text); overflow:hidden;}
+  .app{display:flex; flex-direction:column; height:100vh;}
+  /* ---------- 顶部 ---------- */
+  .topbar{display:flex; align-items:center; gap:8px; padding:6px 10px;
+          background:var(--panel); border-bottom:1px solid var(--border);}
+  .topbar .brand{font-weight:600; color:var(--accent); white-space:nowrap;}
+  .search{display:flex; flex:1; max-width:340px; border:1px solid var(--border);
+          border-radius:var(--radius); overflow:hidden; background:#fff;}
+  .search input{flex:1; border:0; outline:0; padding:5px 8px; font-size:12px;}
+  .search button{border:0; border-left:1px solid var(--border); background:var(--accent-soft);
+                 color:var(--accent); cursor:pointer; padding:0 10px; font-size:11px;}
+  .topbar .project{margin-left:auto; color:var(--muted); white-space:nowrap; font-size:11px;}
+  /* ---------- 中区三栏 ---------- */
+  .main{display:flex; flex:1; min-height:0;}
+  .left{width:220px; background:var(--panel); border-right:1px solid var(--border);
+        padding:8px; overflow:auto; display:flex; flex-direction:column; gap:10px;}
+  .right{width:200px; background:var(--panel); border-left:1px solid var(--border);
+         padding:8px; overflow:auto;}
+  .center{flex:1; min-width:0; position:relative; background:#dfe7dc;}
+  /* 缩略图 */
+  .mini{width:100%; aspect-ratio:2/1; background:#eef2ec; border:1px solid var(--border);
+        border-radius:var(--radius); position:relative; overflow:hidden;}
+  .mini canvas{width:100%; height:100%; display:block;}
+  .viewport-rect{position:absolute; border:1.5px solid var(--accent); background:rgba(61,139,78,.12); pointer-events:none;}
+  /* 分区标题 */
+  .sec-title{font-size:11px; color:var(--muted); text-transform:uppercase;
+             letter-spacing:.04em; margin-bottom:4px;}
+  /* 工作模式 */
+  .modes{display:flex; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
+  .mode{flex:1; text-align:center; padding:5px 0; cursor:pointer; background:#fff; color:var(--muted);}
+  .mode.active{background:var(--accent); color:#fff; font-weight:600;}
+  /* 图层列表 */
+  .layer-row{display:flex; align-items:center; gap:6px; padding:4px 6px; cursor:pointer;
+             border-radius:var(--radius);}
+  .layer-row:hover{background:var(--accent-soft);}
+  .layer-row.active{background:var(--accent-soft); color:var(--accent); font-weight:600;}
+  .layer-row .dot{width:8px; height:8px; border-radius:2px; flex:none;}
+  /* 导入按钮 */
+  .btn{width:100%; padding:5px 8px; border:1px solid var(--border); border-radius:var(--radius);
+       background:#fff; cursor:pointer; font-size:11px; color:var(--text);}
+  .btn:hover{border-color:var(--accent); color:var(--accent);}
+  .btn.primary{background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600;}
+  .btn.primary:hover{filter:brightness(1.05);}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+  /* 工具 */
+  .tool{display:flex; align-items:center; gap:6px; padding:5px 6px; cursor:pointer;
+        border-radius:var(--radius); color:var(--text);}
+  .tool:hover{background:var(--accent-soft);}
+  .tool.active{background:var(--accent); color:#fff;}
+  .tool .t{flex:1;}
+  .tool .flag{font-size:10px; color:var(--muted);}
+  .tool.active .flag{color:#d9f0dc;}
+  /* 生成参数 */
+  .field{margin-bottom:6px;}
+  .field label{display:block; color:var(--muted); margin-bottom:2px; font-size:11px;}
+  .field input{border:1px solid var(--border); border-radius:var(--radius); padding:4px 6px;
+               width:100%; font-size:12px;}
+  /* 中央画布 */
+  #map{position:absolute; inset:0; width:100%; height:100%; display:block;
+       background:#dfe7dc; cursor:grab;}
+  #map.dragging{cursor:grabbing;}
+  #layer-label{position:absolute; left:8px; bottom:8px; background:rgba(255,255,255,.85);
+               border:1px solid var(--border); border-radius:var(--radius); padding:2px 8px;
+               font-size:11px; color:var(--muted);}
+  #hud{position:absolute; right:8px; top:8px; background:rgba(255,255,255,.9);
+       border:1px solid var(--border); border-radius:var(--radius); padding:4px 8px;
+       font-size:11px; color:var(--muted); min-width:150px;}
+  /* 底部状态栏 */
+  .statusbar{display:flex; gap:18px; padding:5px 10px; background:var(--panel);
+             border-top:1px solid var(--border); color:var(--muted); font-size:11px;
+             align-items:center; flex-wrap:wrap;}
+  .statusbar .k{color:var(--muted);}
+  .statusbar .v{color:var(--text); font-variant-numeric:tabular-nums;}
+  .statusbar .stage{color:var(--accent); font-weight:600;}
+  .statusbar .err{color:#c0392b;}
 </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="brand"><span class="dot"></span>地球生成器 <small>WorldEngine · Voronoi + Terrain Diffusion</small></div>
-  <div class="spacer"></div>
-  <div class="coord" id="coord">经度 --.--° · 纬度 --.--°</div>
-</div>
-
-<div class="layout" id="layout">
-
-  <!-- LEFT PANEL -->
-  <aside class="left" id="leftPanel">
-    <div class="left-inner">
-      <div class="left-head">
-        <div>
-          <h1>地球生成器</h1>
-          <div class="sub">程序化行星世界生成</div>
-        </div>
-        <button class="icon-btn" id="collapseBtn" title="收起面板">⟨</button>
-      </div>
-      <div class="left-body">
-        <div class="group">
-          <div class="glabel">种子</div>
-          <div class="seed-row">
-            <input type="number" id="seed" value="1234567" min="1">
-            <button class="icon-btn" id="randSeed" title="随机种子">🎲</button>
-          </div>
-          <div class="field" style="margin-top:14px">
-            <label>图像尺寸</label>
-            <select id="size" style="width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit">
-              <option value="256x256">256 × 256</option>
-              <option value="512x512">512 × 512</option>
-              <option value="1024x512">1024 × 512</option>
-              <option value="1024x1024">1024 × 1024</option>
-              <option value="2048x1024" selected>2048 × 1024（高清）</option>
-              <option value="4096x2048">4096 × 2048（超清·较慢）</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="group">
-          <div class="glabel">参数</div>
-          <div class="field">
-            <label>板块（大板块数）<span class="v" id="n_big_v">6</span></label>
-            <input type="range" id="n_big" min="4" max="10" value="6">
-          </div>
-          <div class="field">
-            <label>微板块数<span class="v" id="n_raw_v">30</span></label>
-            <input type="range" id="n_raw" min="10" max="100" value="30">
-          </div>
-          <div class="field">
-            <label>平滑（域扭曲幅度）<span class="v" id="amp_v">0.22</span></label>
-            <input type="range" id="domain_amp" min="0" max="50" value="22">
-          </div>
-        </div>
-
-        <div class="group">
-          <button class="btn btn-primary" id="genBtn">⚙ 生成</button>
-          <div class="btn-row">
-            <button class="btn btn-ghost" id="shareBtn">🔗 分享</button>
-            <button class="btn btn-ghost" id="dlBtn">⬇ 下载</button>
-          </div>
-        </div>
-
-        <div class="group">
-          <div class="glabel">结果概览</div>
-          <div class="stats-mini" id="statsMini">
-            <div class="stat"><div class="val">--</div><div class="lbl">陆地占比</div></div>
-            <div class="stat"><div class="val">--</div><div class="lbl">最高峰</div></div>
-            <div class="stat"><div class="val">--</div><div class="lbl">生成耗时</div></div>
-            <div class="stat"><div class="val">--</div><div class="lbl">大板块数</div></div>
-          </div>
-        </div>
-      </div>
-      <div class="left-foot">左侧面板可收起以扩大地图区域。地图支持滚轮缩放、拖拽平移，并显示经纬网与比例尺。</div>
+<div class="app">
+  <!-- 顶部 -->
+  <div class="topbar">
+    <span class="brand">EarthEngine</span>
+    <div class="search">
+      <input id="q" placeholder="坐标定位（如 30N 120E，回车）">
+      <button id="qbtn">定位</button>
     </div>
-  </aside>
-  <button class="expand-tab" id="expandTab">☰ 展开</button>
+    <span class="project" id="project">未加载世界</span>
+  </div>
 
-  <!-- CENTER -->
-  <main class="center">
-    <div class="map-toolbar">
-      <div class="layer-name" id="layerName">真实地形 <small>Terrain Diffusion</small></div>
-      <div class="spacer"></div>
-      <button class="tool" id="gridBtn" title="经纬网">▦</button>
-      <button class="tool" id="resetBtn" title="复位视图">⤢</button>
-      <button class="tool" id="zoomOut" title="缩小">−</button>
-      <span class="zoom-label" id="zoomLabel">100%</span>
-      <button class="tool" id="zoomIn" title="放大">＋</button>
+  <div class="main">
+    <!-- 左栏 -->
+    <div class="left">
+      <div class="sec-title">世界缩略图</div>
+      <div class="mini"><canvas id="mini"></canvas><div class="viewport-rect" id="vrect"></div></div>
+
+      <div class="sec-title">数据</div>
+      <button class="btn" id="importBtn" disabled title="规划中">导入数据（规划中）</button>
+
+      <div class="sec-title">工作模式</div>
+      <div class="modes" id="modes"></div>
+
+      <div class="sec-title">图层</div>
+      <div id="layerlist"></div>
+
+      <div class="sec-title">生成参数</div>
+      <div class="field"><label>Seed</label><input id="seedIn" type="number" value="12345"></div>
+      <div class="field"><label>分辨率 W×H（W=2H）</label><input id="whIn" value="1024×512"></div>
+      <button class="btn primary" id="genBtn">生成世界</button>
     </div>
-    <div class="map-viewport" id="viewport">
-      <div class="stage" id="stage">
-        <img id="baseImg" alt="base">
-        <div id="overlayLayer"></div>
-      </div>
-      <canvas id="overlayCanvas"></canvas>
 
-      <div class="status-box" id="statusBox">
-        <div class="spinner"></div>
-        <div class="title">生成中…</div>
-        <div class="hint">正在构造板块骨架并渲染真实地形</div>
-        <div class="process-link" id="statusProcess">查看生成过程 →</div>
-        <pre id="errDetail" style="display:none;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.45;color:#ffb4b4;background:rgba(0,0,0,.28);padding:8px 10px;border-radius:6px;margin-top:8px"></pre>
-      </div>
-
-      <div class="legend" id="legend"><h4 id="legendTitle">图例</h4><div id="legendBody"></div></div>
+    <!-- 中央 -->
+    <div class="center">
+      <canvas id="map"></canvas>
+      <div id="layer-label">—</div>
+      <div id="hud">未加载</div>
     </div>
-  </main>
 
-  <!-- RIGHT RAIL -->
-  <aside class="right" id="rightRail"></aside>
-  <div class="popover" id="popover"><div class="ph" id="popTitle"></div><div id="popBody"></div></div>
-</div>
-
-<!-- PROCESS MODAL -->
-<div class="modal" id="modal">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div><h3>生成过程</h3><div class="sub">从板块构造到地形与气候的逐步生成</div></div>
-      <button class="icon-btn" id="modalClose">✕</button>
+    <!-- 右栏 -->
+    <div class="right">
+      <div class="sec-title">地图工具</div>
+      <div id="tools"></div>
+      <div class="sec-title" style="margin-top:12px">图例</div>
+      <div id="legend" style="color:var(--muted); font-size:11px">—</div>
     </div>
-    <div class="modal-body" id="modalBody"></div>
+  </div>
+
+  <!-- 底部状态栏 -->
+  <div class="statusbar">
+    <span><span class="k">Lat</span> <span class="v" id="st-lat">—</span></span>
+    <span><span class="k">Lon</span> <span class="v" id="st-lon">—</span></span>
+    <span><span class="k">Zoom</span> <span class="v" id="st-zoom">—</span></span>
+    <span><span class="k">Scale</span> <span class="v" id="st-scale">—</span></span>
+    <span><span class="k">Resolution</span> <span class="v" id="st-res">—</span></span>
+    <span><span class="k">Seed</span> <span class="v" id="st-seed">—</span></span>
+    <span class="stage" id="st-stage">就绪</span>
+    <span id="st-status" style="margin-left:auto"></span>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script>
 "use strict";
-const $ = (id) => document.getElementById(id);
+const $=id=>document.getElementById(id);
+const META={modes:["world","terrain","data"],layers:{},tools:[]};
+let WORLD=null;
+let curLayer="land_sea", curMode="world";
+const view={scale:1,ox:0,oy:0};
+let dragging=false,lastX=0,lastY=0;
 
-// ---------- 必须通过 http(s) 访问 ----------
-const IS_FILE = location.protocol === "file:";
-function requireServer(){
-  if(IS_FILE){
-    const box=$("statusBox");
-    box.className="status-box error"; box.style.display="block";
-    box.querySelector(".spinner").style.display="none";
-    box.querySelector(".title").textContent="无法以 file:// 方式运行";
-    box.querySelector(".hint").textContent="本页面必须经 web 服务以 http 访问，不能直接双击打开本地文件。";
-    const ed=$("errDetail");
-    if(ed){ ed.style.display="block"; ed.textContent=
-      "请按以下步骤运行：\n"+
-      "1) 在项目目录执行：\n"+
-      "   python tools/web_server.py --port 8899\n"+
-      "2) 浏览器打开  http://localhost:8899/   （注意是 http:// 而非 file://）\n\n"+
-      "如服务已在运行却仍看到此提示，请确认地址栏是 http://localhost:8899/ ，\n"+
-      "而不是 D:/.../earth_app.html 这样的本地文件路径。"; }
-    box.querySelector(".process-link").style.display="none";
-    return false;
-  }
-  return true;
-}
+const canvas=$("map"),ctx=canvas.getContext("2d");
+const mini=$("mini"),mctx=mini.getContext("2d");
 
-// ---------- state ----------
-const STATE = {
-  images:{}, layers:{}, process:[], stats:{},
-  base:"elevation_relief", overlays:new Set(),
-  zoom:1, panX:0, panY:0, imgW:0, imgH:0,
-  showGrid:true, generated:false,
-};
-const CATS = [
-  {key:"地形", em:"⛰️"}, {key:"板块", em:"🧩"}, {key:"边界", em:"〰️"},
-  {key:"大陆", em:"🌍"}, {key:"气候", em:"🌡️"}, {key:"海陆", em:"💧"},
-];
-const OVERLAY_OPACITY = { boundary_types:0.9, merged:0.55, raw_plates:0.5, ocean_mask:0.5, continents:0.5, temperature:0.6, precipitation:0.6, koppen:0.7 };
+function layerForMode(mode){return {world:["land_sea","plates"],terrain:["terrain"],data:["biome","temperature","precipitation"]}[mode]||[];}
 
-function dataURL(key){ return "data:image/png;base64," + STATE.images[key]; }
-
-// ---------- toast ----------
-let toastTimer=null;
-function toast(msg){
-  const t=$("toast"); t.textContent=msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2200);
-}
-
-// ---------- build right rail ----------
-function buildRail(){
-  const rail=$("rightRail"); rail.innerHTML="";
-  CATS.forEach((c,ci)=>{
-    const keys=Object.keys(STATE.layers).filter(k=>STATE.layers[k].cat===c.key);
-    if(!keys.length) return;
-    const b=document.createElement("button");
-    b.className="rail-btn"; b.dataset.cat=c.key;
-    b.innerHTML=`<span class="em">${c.em}</span><span>${c.key}</span>`;
-    b.onclick=(e)=>{ e.stopPropagation(); openPopover(c.key, b); };
-    rail.appendChild(b);
-    if(ci===CATS.length-1){} // sep handled below
-  });
-}
-
-function openPopover(cat, btn){
-  const pop=$("popover");
-  const keys=Object.keys(STATE.layers).filter(k=>STATE.layers[k].cat===cat);
-  $("popTitle").textContent = cat + " 图层";
-  const body=$("popBody"); body.innerHTML="";
-  keys.forEach(k=>{
-    const m=STATE.layers[k];
-    const row=document.createElement("div");
-    row.className="layer-row";
-    const isOverlay=STATE.overlays.has(k);
-    row.innerHTML=`<span class="nm">${m.label}</span>
-      <span class="set" data-set="${k}">设为主图</span>
-      <span class="ov"><input type="checkbox" data-ov="${k}" ${isOverlay?"checked":""}><span>叠加</span></span>`;
-    row.querySelector("[data-set]").onclick=(ev)=>{ ev.stopPropagation(); setBase(k); closePopover(); };
-    row.querySelector("[data-ov]").onchange=(ev)=>{ ev.stopPropagation(); toggleOverlay(k, ev.target.checked); closePopover(); };
-    row.onclick=()=>{ setBase(k); closePopover(); };
-    body.appendChild(row);
-  });
-  // position popover aligned to button
-  const railRect=$("rightRail").getBoundingClientRect();
-  const bRect=btn.getBoundingClientRect();
-  pop.style.top=(bRect.top - railRect.top + 8)+"px";
-  pop.classList.add("show");
-}
-function closePopover(){ $("popover").classList.remove("show"); }
-document.addEventListener("click",(e)=>{
-  if(!$("popover").contains(e.target) && !e.target.closest(".rail-btn")) closePopover();
-});
-
-// ---------- base / overlays ----------
-function setBase(key){
-  if(!STATE.images[key]) return;
-  STATE.base=key;
-  $("baseImg").src=dataURL(key);
-  const m=STATE.layers[key];
-  $("layerName").innerHTML = `${m.label} <small>${m.cat}</small>`;
-  // highlight active rail
-  document.querySelectorAll(".rail-btn").forEach(b=>{
-    const cat=b.dataset.cat;
-    const hasBase=Object.keys(STATE.layers).some(k=>STATE.layers[k].cat===cat && k===key);
-    b.classList.toggle("active", hasBase);
-  });
-  updateLegend();
-}
-function toggleOverlay(key, on){
-  if(on) STATE.overlays.add(key); else STATE.overlays.delete(key);
-  renderOverlays(); updateLegend();
-}
-function renderOverlays(){
-  const wrap=$("overlayLayer"); wrap.innerHTML="";
-  STATE.overlays.forEach(k=>{
-    if(!STATE.images[k]) return;
-    const img=document.createElement("img");
-    img.src=dataURL(k);
-    img.style.opacity = OVERLAY_OPACITY[k]!=null?OVERLAY_OPACITY[k]:0.6;
-    wrap.appendChild(img);
-  });
-}
-
-// ---------- legend ----------
-const LEGENDS={
-  boundary_types:{title:"板块边界", rows:[
-    ["#dc2626","生长边界（海岭/断层）"],["#1e40af","消亡边界（海沟/造山带）"],["#9ca3af","平移（转换断层）"]]},
-  koppen:{title:"气候类型", rows:[
-    ["#008060","热带雨林气候"],["#96c373","热带草原气候"],["#f5aa46","热带沙漠气候"],
-    ["#37af50","亚热带季风气候"],["#c3c85f","地中海气候"],["#73b9e1","温带海洋性气候"],
-    ["#2378aa","温带季风气候"],["#ebe196","温带大陆性气候"],["#468cb9","亚寒带针叶林气候"],
-    ["#aac3d7","苔原气候"],["#eef2f6","冰原气候"],["#af7d55","高原山地气候"],
-    ["#a8d6f0","海洋"]]},
-  terrain_types:{title:"地貌类型", rows:[
-    ["#10264a","深海"],["#386ea8","大陆架"],["#76a858","平原"],["#c4b86a","丘陵"],
-    ["#9c744a","高原"],["#a8a8ae","山脉"],["#96648c","盆地"]]},
-};
-function updateLegend(){
-  const active=new Set([STATE.base, ...STATE.overlays]);
-  let shown=false;
-  for(const k of active){
-    if(LEGENDS[k]){
-      const L=LEGENDS[k];
-      $("legendTitle").textContent=L.title;
-      $("legendBody").innerHTML=L.rows.map(r=>`<div class="row"><span class="sw" style="background:${r[0]}"></span><span>${r[1]}</span></div>`).join("");
-      $("legend").style.display="block"; shown=true; break;
-    }
-  }
-  if(!shown) $("legend").style.display="none";
-}
-
-// ---------- transform / view ----------
-function applyTransform(){
-  $("stage").style.transform=`translate(${STATE.panX}px,${STATE.panY}px) scale(${STATE.zoom})`;
-  $("zoomLabel").textContent=Math.round(STATE.zoom*100)+"%";
-  drawOverlay();
-}
-function resetView(){
-  const vp=$("viewport"); const vw=vp.clientWidth, vh=vp.clientHeight;
-  if(!STATE.imgW) return;
-  STATE.zoom=Math.min(vw/STATE.imgW, vh/STATE.imgH)*0.98;
-  STATE.panX=(vw-STATE.imgW*STATE.zoom)/2;
-  STATE.panY=(vh-STATE.imgH*STATE.zoom)/2;
-  applyTransform();
-}
-function zoomAt(cx,cy,factor){
-  const nz=Math.max(0.4,Math.min(24,STATE.zoom*factor));
-  const k=nz/STATE.zoom;
-  STATE.panX=cx-(cx-STATE.panX)*k;
-  STATE.panY=cy-(cy-STATE.panY)*k;
-  STATE.zoom=nz; applyTransform();
-}
-
-// ---------- graticule + scale bar + crosshair ----------
-let cursor=null;
-function drawOverlay(){
-  const vp=$("viewport"); const cv=$("overlayCanvas");
-  const vw=vp.clientWidth, vh=vp.clientHeight;
-  const dpr=window.devicePixelRatio||1;
-  cv.width=vw*dpr; cv.height=vh*dpr; cv.style.width=vw+"px"; cv.style.height=vh+"px";
-  const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,vw,vh);
-  if(!STATE.imgW) return;
-  const z=STATE.zoom, px=STATE.panX, py=STATE.panY;
-  const sx=(ix)=>px+ix*z, sy=(iy)=>py+iy*z;
-  // map space -> screen for a lon/lat
-  const lon2x=(lon)=>sx((lon+180)/360*STATE.imgW);
-  const lat2y=(lat)=>sy((90-lat)/180*STATE.imgH);
-
-  if(STATE.showGrid){
-    // choose graticule step based on zoom
-    let step=30;
-    if(STATE.zoom>3) step=15; if(STATE.zoom>8) step=10; if(STATE.zoom>16) step=5;
-    ctx.lineWidth=1; ctx.font="10px sans-serif";
-    // longitude lines
-    for(let lon=-180;lon<=180;lon+=step){
-      const x=lon2x(lon); if(x<-50||x>vw+50) continue;
-      const eq=(lon===0);
-      ctx.strokeStyle=eq?"rgba(255,255,255,.35)":"rgba(255,255,255,.10)";
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,vh); ctx.stroke();
-      ctx.fillStyle="rgba(200,210,225,.55)"; ctx.fillText(lon+"°",x+3,12);
-    }
-    for(let lat=-90;lat<=90;lat+=step){
-      const y=lat2y(lat); if(y<-20||y>vh+20) continue;
-      const eq=(lat===0);
-      ctx.strokeStyle=eq?"rgba(255,255,255,.35)":"rgba(255,255,255,.10)";
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(vw,y); ctx.stroke();
-      ctx.fillStyle="rgba(200,210,225,.55)"; ctx.fillText(lat+"°",3,y-3);
-    }
-  }
-  // scale bar (computed at viewport center latitude)
-  const cImgX=(vw/2-px)/z, cImgY=(vh/2-py)/z;
-  const cLat=90-cImgY/STATE.imgH*180;
-  const kmPerDegLon=111.32*Math.cos(cLat*Math.PI/180);
-  const pxPerDegLon=STATE.imgW*z/360;
-  const kmPerPx=kmPerDegLon/pxPerDegLon;
-  const targetPx=120; const rawKm=targetPx*kmPerPx;
-  const niceKm=niceNumber(rawKm);
-  const barPx=niceKm/kmPerPx;
-  const bx=16, by=vh-22;
-  ctx.strokeStyle="rgba(255,255,255,.85)"; ctx.fillStyle="rgba(255,255,255,.85)";
-  ctx.lineWidth=2; ctx.beginPath();
-  ctx.moveTo(bx,by-5); ctx.lineTo(bx,by); ctx.lineTo(bx+barPx,by); ctx.lineTo(bx+barPx,by-5); ctx.stroke();
-  ctx.font="11px sans-serif"; ctx.fillText(fmtKm(niceKm), bx, by-9);
-  ctx.fillText("0", bx-2, by+12);
-  ctx.fillText(fmtKm(niceKm), bx+barPx-18, by+12);
-
-  // crosshair
-  if(cursor){
-    ctx.strokeStyle="rgba(74,163,255,.9)"; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(cursor.x-7,cursor.y); ctx.lineTo(cursor.x+7,cursor.y);
-    ctx.moveTo(cursor.x,cursor.y-7); ctx.lineTo(cursor.x,cursor.y+7); ctx.stroke();
-  }
-}
-function niceNumber(x){
-  const exp=Math.floor(Math.log10(x)); const f=x/Math.pow(10,exp);
-  let nf; if(f<=1) nf=1; else if(f<=2) nf=2; else if(f<=5) nf=5; else nf=10;
-  return nf*Math.pow(10,exp);
-}
-function fmtKm(km){ return km>=1000?(km/1000).toFixed(km%1000===0?0:1)+" km":Math.round(km)+" km"; }
-
-// ---------- map interactions ----------
-function initMapEvents(){
-  const vp=$("viewport");
-  vp.addEventListener("wheel",(e)=>{
-    e.preventDefault();
-    const r=vp.getBoundingClientRect();
-    zoomAt(e.clientX-r.left, e.clientY-r.top, e.deltaY<0?1.15:1/1.15);
-  },{passive:false});
-
-  let dragging=false, sx=0, sy=0, ox=0, oy=0;
-  vp.addEventListener("pointerdown",(e)=>{
-    if(e.target.closest(".status-box")||e.target.closest(".legend")) return;
-    dragging=true; sx=e.clientX; sy=e.clientY; ox=STATE.panX; oy=STATE.panY;
-    vp.classList.add("grabbing"); vp.setPointerCapture(e.pointerId);
-  });
-  vp.addEventListener("pointermove",(e)=>{
-    const r=vp.getBoundingClientRect();
-    const mx=e.clientX-r.left, my=e.clientY-r.top;
-    updateCoord(mx,my);
-    if(dragging){
-      STATE.panX=ox+(e.clientX-sx); STATE.panY=oy+(e.clientY-sy);
-      applyTransform();
-    }
-  });
-  vp.addEventListener("pointerup",()=>{ dragging=false; vp.classList.remove("grabbing"); });
-  vp.addEventListener("pointerleave",()=>{ cursor=null; drawOverlay(); $("coord").textContent="经度 --.--° · 纬度 --.--°"; });
-  vp.addEventListener("pointermove",(e)=>{ const r=vp.getBoundingClientRect(); cursor={x:e.clientX-r.left,y:e.clientY-r.top}; drawOverlay(); });
-}
-function updateCoord(mx,my){
-  if(!STATE.imgW) return;
-  const ix=(mx-STATE.panX)/STATE.zoom, iy=(my-STATE.panY)/STATE.zoom;
-  if(ix<0||ix>STATE.imgW||iy<0||iy>STATE.imgH){ $("coord").textContent="经度 --.--° · 纬度 --.--°"; return; }
-  const lon=-180+ix/STATE.imgW*360, lat=90-iy/STATE.imgH*180;
-  $("coord").textContent=`经度 ${lon.toFixed(2)}° · 纬度 ${lat.toFixed(2)}°`;
-}
-
-// ---------- toolbar buttons ----------
-$("zoomIn").onclick=()=>{ const vp=$("viewport"); zoomAt(vp.clientWidth/2,vp.clientHeight/2,1.2); };
-$("zoomOut").onclick=()=>{ const vp=$("viewport"); zoomAt(vp.clientWidth/2,vp.clientHeight/2,1/1.2); };
-$("resetBtn").onclick=resetView;
-$("gridBtn").onclick=()=>{ STATE.showGrid=!STATE.showGrid; $("gridBtn").classList.toggle("active",STATE.showGrid); drawOverlay(); };
-
-// ---------- collapse ----------
-$("collapseBtn").onclick=()=>{ $("leftPanel").classList.add("collapsed"); $("expandTab").style.display="flex"; };
-$("expandTab").onclick=()=>{ $("leftPanel").classList.remove("collapsed"); $("expandTab").style.display="none"; };
-
-// ---------- slider live values ----------
-$("n_big").oninput=e=>$("n_big_v").textContent=e.target.value;
-$("n_raw").oninput=e=>$("n_raw_v").textContent=e.target.value;
-$("domain_amp").oninput=e=>$("amp_v").textContent=(e.target.value/100).toFixed(2);
-
-// ---------- seed random ----------
-$("randSeed").onclick=()=>{ $("seed").value=Math.floor(Math.random()*1e7)+1; };
-
-// ---------- share / download ----------
-$("shareBtn").onclick=()=>{
-  const p=readParams();
-  const url=new URL(location.href); url.search="";
-  url.searchParams.set("seed",p.seed); url.searchParams.set("w",p.width); url.searchParams.set("h",p.height);
-  url.searchParams.set("n_raw",p.n_raw); url.searchParams.set("n_big",p.n_big);
-  url.searchParams.set("domain_amp",p.domain_amp);
-  url.searchParams.set("base",STATE.base); url.searchParams.set("ov",[...STATE.overlays].join(","));
-  navigator.clipboard.writeText(url.toString()).then(
-    ()=>toast("分享链接已复制到剪贴板"),
-    ()=>{ prompt("复制此链接：",url.toString()); }
-  );
-};
-$("dlBtn").onclick=()=>{
-  if(!STATE.generated){ toast("请先生成世界"); return; }
-  const cv=document.createElement("canvas"); cv.width=STATE.imgW; cv.height=STATE.imgH;
-  const ctx=cv.getContext("2d");
-  const base=new Image(); base.src=dataURL(STATE.base);
-  base.onload=()=>{
-    ctx.drawImage(base,0,0);
-    let pending=STATE.overlays.size;
-    if(pending===0){ doDownload(cv); return; }
-    STATE.overlays.forEach(k=>{
-      const im=new Image(); im.src=dataURL(k);
-      im.onload=()=>{ ctx.globalAlpha=OVERLAY_OPACITY[k]!=null?OVERLAY_OPACITY[k]:0.6; ctx.drawImage(im,0,0); ctx.globalAlpha=1; if(--pending===0) doDownload(cv); };
-    });
-  };
-};
-function doDownload(cv){
-  const a=document.createElement("a");
-  a.download=`earth_${$("seed").value}.png`; a.href=cv.toDataURL("image/png"); a.click();
-  toast("已下载当前视图 PNG");
-}
-
-// ---------- process modal ----------
-function openProcess(){
-  if(!STATE.generated){ toast("请先生成世界"); return; }
-  const body=$("modalBody"); body.innerHTML="";
-  STATE.process.forEach(s=>{
-    if(!STATE.images[s.key]) return;
-    const d=document.createElement("div"); d.className="pstage";
-    d.innerHTML=`<img src="${dataURL(s.key)}"><div class="meta"><div class="n">${s.label.split(" ")[0]}</div><div class="t">${s.label.replace(/^[^ ]+ /,"")}</div><div class="d">${s.desc}</div></div>`;
-    body.appendChild(d);
-  });
-  $("modal").classList.add("show");
-}
-$("statusProcess").onclick=openProcess;
-$("modalClose").onclick=()=>$("modal").classList.remove("show");
-$("modal").onclick=(e)=>{ if(e.target===$("modal")) $("modal").classList.remove("show"); };
-
-// ---------- params ----------
-function readParams(){
-  const size=$("size").value.split("x");
-  return {
-    seed:parseInt($("seed").value)||1234567,
-    width:parseInt(size[0]), height:parseInt(size[1]),
-    n_raw:parseInt($("n_raw").value), n_big:parseInt($("n_big").value),
-    domain_amp:parseFloat($("domain_amp").value)/100,
-  };
-}
-
-// ---------- generate ----------
-async function generate(autofromurl){
-  const btn=$("genBtn"); const box=$("statusBox");
-  if(!requireServer()){ btn.disabled=false; btn.textContent="⚙ 生成"; return; }
-  btn.disabled=true; btn.textContent="生成中…";
-  box.className="status-box"; box.style.display="block";
-  box.querySelector(".spinner").style.display="block";
-  box.querySelector(".title").textContent="生成中…";
-  box.querySelector(".hint").textContent="正在构造板块骨架并渲染真实地形";
-  box.querySelector(".process-link").style.display="none";
-  if($("errDetail")) $("errDetail").style.display="none";
-  $("overlayLayer").innerHTML=""; STATE.overlays.clear();
-
-  const p=readParams();
+async function loadMeta(){
   try{
-    const resp=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
-    const data=await resp.json();
-    if(!data.success){ const e=new Error(data.error||"未知错误"); e.detail=data.traceback||""; throw e; }
-    STATE.images=data.images; STATE.layers=data.layers; STATE.process=data.process; STATE.stats=data.stats;
-    STATE.generated=true;
-    buildRail();
-    // default base = main
-    STATE.base=data.main||"elevation_relief";
-    $("baseImg").onload=()=>{
-      STATE.imgW=$("baseImg").naturalWidth; STATE.imgH=$("baseImg").naturalHeight;
-      if(!STATE._viewInit){ resetView(); STATE._viewInit=true; }
-      updateLegend(); drawOverlay();
-    };
-    setBase(STATE.base);
-    // stats mini
-    const s=data.stats;
-    const sm=$("statsMini").children;
-    sm[0].querySelector(".val").textContent=(s.land_pct!=null?s.land_pct+"%":"--");
-    sm[1].querySelector(".val").textContent=(s.elev_max_m!=null?Math.round(s.elev_max_m)+"m":"--");
-    sm[2].querySelector(".val").textContent=(s.total_time!=null?s.total_time+"s":"--");
-    sm[3].querySelector(".val").textContent=(s.merged_groups!=null?s.merged_groups:"--");
-    // show process link
-    box.querySelector(".spinner").style.display="none";
-    box.querySelector(".title").textContent="生成完成";
-    box.querySelector(".hint").textContent=`陆地 ${s.land_pct}% · 最高峰 ${Math.round(s.elev_max_m)}m · 耗时 ${s.total_time}s`;
-    box.querySelector(".process-link").style.display="inline-flex";
-    toast("世界已生成");
-    if(autofromurl){ /* keep url state */ }
-  }catch(err){
-    box.className="status-box error"; box.style.display="block";
-    box.querySelector(".spinner").style.display="none";
-    box.querySelector(".title").textContent="生成失败";
-    box.querySelector(".hint").textContent=(err.message&&err.message.length>140)?err.message.slice(0,140)+"…":(err.message||"未知错误");
-    const ed=box.querySelector(".err-detail")||$("errDetail");
-    if(ed){ ed.style.display="block"; ed.textContent=(err.detail||"")+"\n\n(完整错误已输出到浏览器控制台 F12 → Console)"; }
-    box.querySelector(".process-link").style.display="none";
-    toast("生成失败，详见状态框 / 控制台");
-    console.error("【地球生成器】生成失败详情：\n"+(err.detail||err.stack||err.message));
-  }finally{
-    btn.disabled=false; btn.textContent="⚙ 生成";
-    setTimeout(()=>{ if(STATE.generated) box.style.display="none"; }, 1600);
-  }
+    const r=await fetch("/api/meta"); const j=await r.json();
+    if(j.success){Object.assign(META,j.data); buildModes(); buildTools(); buildLayers();}
+  }catch(e){setStatus("后端不可达: "+e,"err");}
 }
-$("genBtn").onclick=()=>generate(false);
+function buildModes(){
+  const box=$("modes"); box.innerHTML="";
+  META.modes.forEach(m=>{
+    const d=document.createElement("div"); d.className="mode"+(m===curMode?" active":"");
+    d.textContent=m==="world"?"世界":m==="terrain"?"地形":"数据";
+    d.onclick=()=>{curMode=m;document.querySelectorAll(".mode").forEach(x=>x.classList.remove("active"));
+                   d.classList.add("active"); buildLayers();};
+    box.appendChild(d);
+  });
+}
+function buildTools(){
+  const box=$("tools"); box.innerHTML="";
+  const names={navigate:"导航",select:"选择",inspect:"检查",plates:"板块",terrain:"地形",rivers:"河流",measure:"测量"};
+  META.tools.forEach(t=>{
+    const d=document.createElement("div"); d.className="tool"+(t==="navigate"?" active":"");
+    const planning=["select","inspect","plates","terrain","rivers","measure"].includes(t);
+    d.innerHTML=`<span class="t">${names[t]||t}</span>${planning?`<span class="flag">规划中</span>`:""}`;
+    if(planning){d.style.cursor="not-allowed";d.onclick=()=>setStatus(`「${names[t]}」规划中`,"");}
+    else d.onclick=()=>{document.querySelectorAll(".tool").forEach(x=>x.classList.remove("active"));d.classList.add("active");};
+    box.appendChild(d);
+  });
+}
+function buildLayers(){
+  const box=$("layerlist"); box.innerHTML="";
+  layerForMode(curMode).forEach(key=>{
+    const l=META.layers[key]||{label:key,group:curMode};
+    const d=document.createElement("div"); d.className="layer-row"+(key===curLayer?" active":"");
+    d.innerHTML=`<span class="dot" style="background:${dotColor(key)}"></span><span>${l.label}</span>`;
+    d.onclick=()=>{curLayer=key; buildLayers(); $("layer-label").textContent=(l.label)+" · "+l.group; drawMap();};
+    box.appendChild(d);
+  });
+}
+function dotColor(k){return {land_sea:"#3d8b4e",plates:"#a0522d",terrain:"#7a8f6b",biome:"#2e8b57",temperature:"#c0392b",precipitation:"#2980b9"}[k]||"#999";}
 
-// ---------- init from URL ----------
-function initFromURL(){
-  const q=new URLSearchParams(location.search);
-  if(q.has("seed")){
-    $("seed").value=q.get("seed");
-    if(q.has("w")) $("size").value=`${q.get("w")}x${q.get("h")}`;
-    if(q.has("n_raw")){ $("n_raw").value=q.get("n_raw"); $("n_raw_v").textContent=q.get("n_raw"); }
-    if(q.has("n_big")){ $("n_big").value=q.get("n_big"); $("n_big_v").textContent=q.get("n_big"); }
-    if(q.has("domain_amp")){ const a=Math.round(parseFloat(q.get("domain_amp"))*100); $("domain_amp").value=a; $("amp_v").textContent=parseFloat(q.get("domain_amp")).toFixed(2); }
-    setTimeout(()=>generate(true),300);
-  }
-}
+$("genBtn").onclick=async()=>{
+  const seed=parseInt($("seedIn").value||"12345",10);
+  const m=$("whIn").value.trim().split(/[x×]/);
+  const w=parseInt(m[0]),h=parseInt(m[1]);
+  if(isNaN(w)||isNaN(h)||w!==2*h){setStatus("分辨率需 W=2×H","err");return;}
+  $("genBtn").disabled=true; $("st-stage").textContent="生成中…";
+  try{
+    const r=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({seed,width:w,height:h})});
+    const j=await r.json();
+    if(!j.success){setStatus("生成失败: "+(j.error?j.error.message:"未知"),"err");
+      $("st-stage").textContent="失败"; return;}
+    WORLD=j.data; curLayer="land_sea";
+    $("st-res").textContent=w+"×"+h; $("st-seed").textContent=seed;
+    $("project").textContent=`seed ${seed} · 陆地 ${(WORLD.land*100).toFixed(1)}%`;
+    $("st-stage").textContent=`阶段 ${WORLD.stages.length} · ${WORLD.validation.passed?"通过":"有错误"}`;
+    setStatus(`生成 ${WORLD.elapsed}s · errors=${WORLD.validation.errors.length}`,
+              WORLD.validation.passed?"":"err");
+    const hv=[WORLD.validation.errors,WORLD.validation.warnings].flat().map(x=>x.message).join("; ");
+    $("hud").textContent=WORLD.validation.passed?"验证通过":(hv||"验证有误");
+    buildLayers(); resetView(); drawMap(); drawMini();
+  }catch(e){setStatus("请求失败: "+e,"err"); $("st-stage").textContent="失败";}
+  finally{$("genBtn").disabled=false;}
+};
 
-// ---------- boot ----------
-$("gridBtn").classList.add("active");
-initMapEvents();
-window.addEventListener("resize",()=>{ drawOverlay(); });
-initFromURL();
-// if nothing generated, show a friendly placeholder status
-if(!STATE.generated){
-  const box=$("statusBox");
-  box.querySelector(".spinner").style.display="none";
-  box.querySelector(".title").textContent="准备就绪";
-  box.querySelector(".hint").textContent="设置种子与参数，点击「生成」创建你的世界";
-  box.querySelector(".process-link").style.display="none";
+function resizeCanvas(){const r=canvas.parentElement.getBoundingClientRect();
+  canvas.width=Math.max(1,r.width);canvas.height=Math.max(1,r.height);}
+function resetView(){view.scale=1;view.ox=0;view.oy=0;}
+
+function drawMap(){
+  const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#dfe7dc"; ctx.fillRect(0,0,w,h);
+  if(!WORLD){ctx.fillStyle="#7b8579";ctx.font="13px sans-serif";ctx.textAlign="center";
+    ctx.fillText("点击「生成世界」开始…",w/2,h/2); return;}
+  const img=WORLD.images[curLayer]; if(!img) return;
+  const im=new Image();
+  im.onload=()=>{
+    const iw=im.naturalWidth,ih=im.naturalHeight;
+    ctx.setTransform(view.scale,0,0,view.scale,view.ox,view.oy);
+    ctx.imageSmoothingEnabled=true; ctx.drawImage(im,0,0,iw,ih);
+    ctx.strokeStyle="rgba(80,100,90,0.18)"; ctx.lineWidth=1;
+    for(let x=0;x<=12;x++){ctx.beginPath();ctx.moveTo(iw*x/12,0);ctx.lineTo(iw*x/12,ih);ctx.stroke();}
+    for(let y=0;y<=6;y++){ctx.beginPath();ctx.moveTo(0,ih*y/6);ctx.lineTo(iw,ih*y/6);ctx.stroke();}
+    ctx.setTransform(1,0,0,1,0,0); updateStatus();
+  };
+  im.src=img;
 }
+canvas.addEventListener("wheel",e=>{e.preventDefault(); if(!WORLD)return;
+  const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const k=e.deltaY<0?1.2:1/1.2; const ns=Math.max(0.05,Math.min(60,view.scale*k));
+  view.ox=mx-(mx-view.ox)*(ns/view.scale); view.oy=my-(my-view.oy)*(ns/view.scale);
+  view.scale=ns; drawMap(); drawMini();});
+canvas.addEventListener("mousedown",e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.classList.add("dragging");});
+window.addEventListener("mousemove",e=>{if(!dragging)return;view.ox+=e.clientX-lastX;view.oy+=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;drawMap();drawMini();});
+window.addEventListener("mouseup",()=>{dragging=false;canvas.classList.remove("dragging");});
+
+function drawMini(){
+  if(!WORLD){mctx.clearRect(0,0,mini.width,mini.height);return;}
+  const img=WORLD.images["land_sea"]; if(!img) return;
+  const im=new Image();
+  im.onload=()=>{
+    const w=mini.clientWidth,h=mini.clientHeight; mini.width=w; mini.height=h;
+    mctx.clearRect(0,0,w,h); mctx.fillStyle="#eef2ec"; mctx.fillRect(0,0,w,h);
+    mctx.drawImage(im,0,0,w,h);
+    const iw=im.naturalWidth,ih=im.naturalHeight;
+    const sx=view.ox/view.scale, sy=view.oy/view.scale;
+    const vw=canvas.width/view.scale, vh=canvas.height/view.scale;
+    const px=sx/iw*w, py=sy/ih*h, pw=vw/iw*w, ph=vh/ih*h;
+    const r=$("vrect"); r.style.left=Math.max(0,Math.min(w-pw,px))+"px";
+    r.style.top=Math.max(0,Math.min(h-ph,py))+"px";
+    r.style.width=Math.max(4,pw)+"px"; r.style.height=Math.max(2,ph)+"px";
+  };
+  im.src=img;
+}
+function updateStatus(){
+  if(!WORLD)return;
+  const cx=(-view.ox+canvas.width/2)/view.scale, cy=(-view.oy+canvas.height/2)/view.scale;
+  $("st-lat").textContent=(90-cy/WORLD.h*180).toFixed(2)+"°";
+  $("st-lon").textContent=(cx/WORLD.w*360-180).toFixed(2)+"°";
+  $("st-zoom").textContent=view.scale.toFixed(2)+"×";
+  const kmPx=40075/WORLD.w/view.scale;
+  $("st-scale").textContent=kmPx>=1?(kmPx.toFixed(1)+" km/px"):((kmPx*1000).toFixed(1)+" m/px");
+}
+function setStatus(msg,cls){const s=$("st-status"); s.textContent=msg; s.className=cls||"";}
+
+function parseCoord(str){
+  const m=str.trim().match(/^(-?[\d.]+)\s*(N|S)?[\s,]*(-?[\d.]+)\s*(E|W)?$/i);
+  if(!m)return null;
+  let lat=parseFloat(m[1]),lon=parseFloat(m[3]);
+  if(m[2]&&m[2].toUpperCase()==="S")lat=-lat; if(m[4]&&m[4].toUpperCase()==="W")lon=-lon;
+  if(lat<-90||lat>90||lon<-180||lon>180)return null;
+  return {lat,lon};
+}
+function goTo(lat,lon){
+  if(!WORLD){setStatus("先生成世界再定位","err");return;}
+  const cx=(lon+180)/360*WORLD.w, cy=(90-lat)/180*WORLD.h;
+  view.ox=canvas.width/2-cx*view.scale; view.oy=canvas.height/2-cy*view.scale;
+  drawMap(); drawMini();
+}
+$("qbtn").onclick=()=>{const c=parseCoord($("q").value); if(!c){setStatus("坐标格式如：30N 120E","err");return;} goTo(c.lat,c.lon); setStatus(`已定位 ${c.lat}° ${c.lon}°`,"");};
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter")$("qbtn").click();});
+
+window.addEventListener("resize",()=>{resizeCanvas(); drawMap(); drawMini();});
+(async function boot(){resizeCanvas(); await loadMeta(); drawMap(); drawMini();})();
 </script>
 </body>
 </html>

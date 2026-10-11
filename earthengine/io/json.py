@@ -16,8 +16,10 @@ def world_meta(world_state, extra=None) -> dict:
     }
     if world_state.validation:
         meta["validation"] = {
-            "scores": world_state.validation.get("scores"),
-            "messages": world_state.validation.get("messages"),
+            "passed": world_state.validation.get("passed"),
+            "errors": world_state.validation.get("errors"),
+            "warnings": world_state.validation.get("warnings"),
+            "meta": world_state.validation.get("meta"),
         }
     if world_state.ocean and world_state.ocean.get("land_mask") is not None:
         meta["land_fraction"] = float(world_state.ocean["land_mask"].mean())

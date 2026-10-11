@@ -20,16 +20,20 @@ from earthengine.planet.sphere import LatLonGrid
 from earthengine.pipeline.world import (
     WorldState, TERRAIN_NAMES, BOUNDARY_NAMES, CRUST_NAMES,
 )
+from earthengine.pipeline import dependencies as deps
 
 # 阶段别名 → 执行函数列表（按依赖顺序）
-_STAGE_ORDER = [
+_STAGE_ORDER = deps.dependency_closure([
     "planet", "tectonics", "crust", "ocean", "terrain",
     "atmosphere", "climate", "hydrology", "geology",
     "conditioning", "enhance", "vegetation", "civilization", "render",
-]
+])
+
+# 解析后的别名 → 规范名
 _ALIASES = {
     "tectonic": "tectonics", "ocean": "ocean", "terrain": "terrain",
-    "climate": "climate", "hydrology": "hydrology",
+    "climate": "climate", "hydrology": "hydrology", "crust": "crust",
+    "vegetation": "vegetation", "civilization": "civilization",
 }
 
 
@@ -54,15 +58,26 @@ class WorldGenerator:
 
     # ------------------------------------------------------------------
     def generate(self, stages=None) -> WorldState:
-        """运行（或选择部分）阶段，返回完整 WorldState。"""
+        """运行（或选择部分）阶段，返回完整 WorldState。
+
+        指定目标阶段时自动执行其前置依赖闭包 (P0-1)：请求 ``terrain`` 会先跑
+        planet/tectonics/crust/ocean；请求 ``climate`` 会先跑 terrain 等。
+        阶段顺序 = 依赖闭包拓扑序，可复现、可记录（``self._executed_stages``）。
+        """
         if stages is None:
             stages = _STAGE_ORDER
         elif isinstance(stages, str):
             stages = [_ALIASES.get(s, s) for s in stages.split(",")]
-        want = set(_ALIASES.get(s, s) for s in stages)
-        for s in _STAGE_ORDER:
-            if s in want:
-                getattr(self, f"stage_{s}")()
+        stages = [deps.canonical(s) for s in stages]
+        # 前置依赖闭包（拓扑序；循环依赖在此抛错）
+        plan = deps.dependency_closure(stages)
+        self._executed_stages = []
+        for s in plan:
+            fn = getattr(self, f"stage_{s}", None)
+            if fn is None:
+                raise deps.StageDependencyError(f"阶段 '{s}' 没有 stage_{s}() 实现")
+            fn()
+            self._executed_stages.append(s)
         return self.finalize()
 
     # ------------------------------------------------------------------
