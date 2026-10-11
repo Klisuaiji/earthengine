@@ -459,6 +459,9 @@ def build_continents(seed, w, h, plates=None, plate_is_ocean=None,
     island_mask = _grow_islands(seed, w, h, land_mask, cores, shares,
                                 island_fraction, plates, plate_is_ocean)
     if island_mask is not None and island_mask.any():
+        # 收紧：去掉开放洋里 <4px 的孤立碎点（噪声状突兀小岛）；近岸 shelf /
+        # 岛弧面积较大或贴岸，保留。避免"海洋中央散落突兀孤点"。
+        island_mask = _prune_islets(island_mask, land_mask, w)
         new_land = island_mask & ~land_mask
         if new_land.any():
             # attach new islands to the nearest continent core
@@ -479,6 +482,33 @@ def build_continents(seed, w, h, plates=None, plate_is_ocean=None,
 # ---------------------------------------------------------------------------
 # Stage 3: Earth-like islands
 # ---------------------------------------------------------------------------
+def _prune_islets(island_mask, land_mask, w, min_px=4, coast_px=10):
+    """Remove tiny (< ``min_px`` px) islands that sit far from any continent.
+
+    Coastal fringe / shelf islets (geologically plausible) stay because they
+    hug the coast; lone 1-3 px dots in the open ocean are pruned as noise-like.
+    """
+    try:
+        from scipy.ndimage import label, distance_transform_edt
+    except Exception:  # pragma: no cover
+        return island_mask
+    isl = island_mask.astype(bool)
+    if not isl.any():
+        return isl
+    d_coast = distance_transform_edt(~land_mask.astype(bool))
+    lab, n = label(isl, structure=numpy.ones((3, 3)))
+    if n == 0:
+        return isl
+    sizes = numpy.bincount(lab.ravel())[1:]
+    out = isl.copy()
+    for i in range(n):
+        if sizes[i] < min_px:
+            mask = lab == (i + 1)
+            if float(d_coast[mask].min()) > coast_px:
+                out[mask] = False
+    return out
+
+
 def _blob_mask(h, w, P_flat, center, fraction, seed, warp_amp=0.30):
     """One noise-warped cap island covering ~``fraction`` of the sphere."""
     r = _core_radius(fraction)
@@ -606,8 +636,8 @@ def _grow_islands(seed, w, h, land_mask, cores, shares, island_fraction,
                 cur = cur + side * rng.uniform(-0.35, 0.35) * math.sin(math.radians(step))
                 cur = cur / float(math.sqrt(float(cur.dot(cur))))
 
-    # --- 3. hotspot chains in the open ocean --------------------------------
-    chains = rng.randint(2, 4)
+    # --- 3. hotspot chains in the open ocean (kept few; lone dots pruned) ---
+    chains = rng.randint(1, 3)
     for s in range(chains):
         start = _random_ocean_vec(rng, land_mask)
         if start is None:
@@ -635,8 +665,8 @@ def _grow_islands(seed, w, h, land_mask, cores, shares, island_fraction,
                 cur = cur + side * rng.uniform(-0.3, 0.3) * math.sin(math.radians(step_deg))
                 cur = cur / float(math.sqrt(float(cur.dot(cur))))
 
-    # --- 4. polar fragments --------------------------------------------------
-    frags = rng.randint(6, 14)
+    # --- 4. polar fragments (fewer, so they read as archipelago not noise) --
+    frags = rng.randint(4, 8)
     for s in range(frags):
         lat = math.radians(rng.uniform(56.0, 80.0)) * (1 if rng.rand() < 0.5 else -1)
         lon = rng.rand() * TAU

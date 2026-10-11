@@ -118,12 +118,17 @@ def render_relief_hires(elev, out_path, rivers=None, acc=None, min_acc=1.0,
     sea = ~land
     if sea.any() and distance_transform_edt is not None:
         d_in = distance_transform_edt(land).astype(np.float32)
-        glow = np.exp(-d_in / (w * 0.02))
-        depth = np.clip(-elev[sea] / 5500.0, 0, 1)
+        # 海岸光晕：更窄的带（w*0.05）+ 更弱幅度，避免"深色描边+蓝色光晕"抢眼
+        glow = np.exp(-d_in / (w * 0.05))
+        # 海底深度做低通，抹掉高频碎纹，突出宏观海盆
+        depth_map = np.clip(-elev / 5500.0, 0, 1)
+        if gaussian_filter is not None:
+            depth_map = gaussian_filter(depth_map.astype(np.float32), 1.5)
+        depth = depth_map[sea]
         rgb[sea, 0] = np.interp(depth, [0, 1], [0.42, 0.09])
         rgb[sea, 1] = np.interp(depth, [0, 1], [0.80, 0.38])
         rgb[sea, 2] = np.interp(depth, [0, 1], [0.86, 0.66])
-        rgb[sea] = np.clip(rgb[sea] + glow[sea, None] * np.array([0.10, 0.16, 0.10]), 0, 1)
+        rgb[sea] = np.clip(rgb[sea] + glow[sea, None] * np.array([0.05, 0.08, 0.05]), 0, 1)
     if land.any():
         t = np.clip(elev[land] / 5000.0, 0, 1)
         stops = RELIEF_HIRES_LAND[:, 0]
