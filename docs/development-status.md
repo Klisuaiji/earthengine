@@ -92,3 +92,25 @@
 **第 2 轮新增/变更文件**：`tests/test_geocausality.py`（计数修复 + 回归）、
 `pyproject.toml`（scipy→核心）、`earthengine/pipeline/validator.py`（不静默跳过）、
 `README.md`、`docs/development-status.md`。`reports/quality_report.json` 更新为 16/16 seed。
+
+---
+
+## 第 3 轮修复：大陆布局与海陆掩膜一致性（按参考图反馈）
+
+**根因（用户指出的 P0）**：`stage_terrain` 里 `fractalize_coast(target_land=…)`
+用整幅分形场全局分位数**重写**海陆掩膜，把 tectonics 阶段验证过的大陆布局
+（间距/孤立大陆/大洋结构）丢掉；且验证器用 `continent_mask` 核心标号计数，
+多个核心生长粘连成巨型连通大陆时仍通过验证 → 大陆挤、中央空、孤岛突兀。
+
+| 修复 | 说明 |
+| --- | --- |
+| `stages.stage_terrain` | 大陆主体直接采用 `geo_lm`（验证过的 build_continents 布局，内部已含分形海岸细化+岛屿），不再全局重写海陆掩膜 |
+| `detail.fractalize_coast` | target_land 分支改为海岸带局部扰动（保留大陆主体/深海），杜绝全局分位数重写 |
+| `geography_validator` | 新增连通分量硬检查 `cc_mainland ≤ 0.45`（欧亚-like 上限，实测种子粘连 0.5–0.74 → 0.39–0.45），失败即有限重滚换布局 |
+| 数据流一致性 | 验证布局 == 最终地形使用的海陆掩膜 == 高程/气候的 land_mask，全程同一份 |
+
+**实测**：
+- seed123456：cc_mainland 0.74 → 0.41（3 次重滚），land 0.329，largest_ocean 0.67
+- seed42=0.45、seed777=0.39，全部 checks True
+- 16/16 seed 质量报告通过；test_pipeline/geocausality/ai/web/run_checks 全绿
+- land 由 0.300（fractalize 锁）变为 ~0.325（build_continents 自然陆比），仍满足验证

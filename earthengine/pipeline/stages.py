@@ -164,11 +164,10 @@ class WorldGenerator:
         # 用海平面强制陆地占比（flood 低海岸地，确定性、非随机抖动）
         target_land = max(0.25, min(0.35, self.land_target))
         sea_level_m = sea_level.ocean_fraction_to_sea_level(coarse, 1.0 - target_land)
-        # 细化海岸线（分形场分位数阈值精确锁定 target_land）+ 程序化高程。
-        # procedural_elevation 基于 final_land 一次性计算高程与地形区域，
-        # 与最终 land_mask 保持一致（此前在 geo_lm 上额外算一次 terrain_region_map，
-        # 结果被覆盖——重复且用过期掩膜，已删除）。
-        final_land = detail.fractalize_coast(geo_lm, self.seed, target_land=target_land)
+        # 大陆主体采用 tectonics 阶段已验证过的大陆布局（build_continents 已做
+        # 分形海岸细化 + 岛屿），保持大陆间距/孤立大陆/大洋结构等约束不被破坏；
+        # 不再用 fractalize_coast 的全局分位数阈值重写海陆掩膜（那会丢弃验证结果）。
+        final_land = geo_lm
         elev, geo_elev, terrain_class = detail.procedural_elevation(final_land, bounds, self.seed)
         self._ocean["land_mask"] = final_land
         self._ocean["sea_level_m"] = sea_level_m

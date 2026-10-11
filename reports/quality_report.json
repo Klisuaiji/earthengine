@@ -12,9 +12,9 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.3262939453125,
       "n_plates": 6,
-      "civ_points": 1,
+      "civ_points": 0,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -29,7 +29,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.326,
           "target": [
             0.25,
             0.35
@@ -38,13 +38,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.934,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.934,
+          "value": 0.897,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -62,7 +62,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 5.69
+      "elapsed_s": 6.01
     },
     {
       "seed": 42,
@@ -71,7 +71,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.327545166015625,
       "n_plates": 6,
       "civ_points": 1,
       "metrics": {
@@ -88,7 +88,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.328,
           "target": [
             0.25,
             0.35
@@ -97,13 +97,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.931,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.961,
+          "value": 0.955,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -121,7 +121,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.48
+      "elapsed_s": 1.87
     },
     {
       "seed": 777,
@@ -130,7 +130,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.32916259765625,
       "n_plates": 6,
       "civ_points": 1,
       "metrics": {
@@ -147,7 +147,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.329,
           "target": [
             0.25,
             0.35
@@ -156,13 +156,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.927,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.966,
+          "value": 0.971,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -180,7 +180,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.61
+      "elapsed_s": 0.57
     },
     {
       "seed": 28070,
@@ -189,9 +189,9 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.32598876953125,
       "n_plates": 6,
-      "civ_points": 0,
+      "civ_points": 1,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -206,7 +206,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.326,
           "target": [
             0.25,
             0.35
@@ -215,13 +215,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.935,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.96,
+          "value": 0.968,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -239,7 +239,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 4.02
+      "elapsed_s": 4.12
     },
     {
       "seed": 99,
@@ -248,9 +248,9 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.324005126953125,
       "n_plates": 6,
-      "civ_points": 2,
+      "civ_points": 1,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -265,7 +265,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.324,
           "target": [
             0.25,
             0.35
@@ -274,13 +274,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.94,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.819,
+          "value": 0.967,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -298,7 +298,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.69
+      "elapsed_s": 11.8
     },
     {
       "seed": 2024,
@@ -307,7 +307,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.327117919921875,
       "n_plates": 6,
       "civ_points": 0,
       "metrics": {
@@ -324,7 +324,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.327,
           "target": [
             0.25,
             0.35
@@ -333,13 +333,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.932,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.907,
+          "value": 0.922,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -357,7 +357,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.38
+      "elapsed_s": 5.57
     },
     {
       "seed": 555,
@@ -366,7 +366,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.3271484375,
       "n_plates": 6,
       "civ_points": 0,
       "metrics": {
@@ -383,7 +383,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.327,
           "target": [
             0.25,
             0.35
@@ -392,13 +392,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.932,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.915,
+          "value": 0.923,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -416,7 +416,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.9
+      "elapsed_s": 1.97
     },
     {
       "seed": 11,
@@ -425,9 +425,9 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.330108642578125,
       "n_plates": 6,
-      "civ_points": 0,
+      "civ_points": 1,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -442,7 +442,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.33,
           "target": [
             0.25,
             0.35
@@ -451,13 +451,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.925,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.93,
+          "value": 0.971,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -475,7 +475,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 3.57
+      "elapsed_s": 5.76
     },
     {
       "seed": 2025,
@@ -484,66 +484,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
-      "n_plates": 6,
-      "civ_points": 2,
-      "metrics": {
-        "land_sea_conflict": {
-          "value": 0.0,
-          "target": null,
-          "unit": "frac",
-          "ok": true
-        },
-        "boundary_types": {
-          "value": 3,
-          "target": ">=3",
-          "unit": "",
-          "ok": true
-        },
-        "land_fraction": {
-          "value": 0.3,
-          "target": [
-            0.25,
-            0.35
-          ],
-          "unit": "",
-          "ok": true
-        },
-        "global_geography": {
-          "value": 1.0,
-          "target": null,
-          "unit": "",
-          "ok": true
-        },
-        "lat_temp_corr": {
-          "value": 0.919,
-          "target": 0.7,
-          "unit": "",
-          "ok": true
-        },
-        "precip_nonneg": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        },
-        "uphill": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        }
-      },
-      "elapsed_s": 0.74
-    },
-    {
-      "seed": 314159,
-      "width": 256,
-      "height": 128,
-      "passed": true,
-      "errors": [],
-      "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.327392578125,
       "n_plates": 6,
       "civ_points": 1,
       "metrics": {
@@ -560,7 +501,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.327,
           "target": [
             0.25,
             0.35
@@ -569,184 +510,7 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
-          "target": null,
-          "unit": "",
-          "ok": true
-        },
-        "lat_temp_corr": {
-          "value": 0.907,
-          "target": 0.7,
-          "unit": "",
-          "ok": true
-        },
-        "precip_nonneg": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        },
-        "uphill": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        }
-      },
-      "elapsed_s": 0.48
-    },
-    {
-      "seed": 888,
-      "width": 256,
-      "height": 128,
-      "passed": true,
-      "errors": [],
-      "warnings": [],
-      "land_fraction": 0.300018310546875,
-      "n_plates": 6,
-      "civ_points": 1,
-      "metrics": {
-        "land_sea_conflict": {
-          "value": 0.0,
-          "target": null,
-          "unit": "frac",
-          "ok": true
-        },
-        "boundary_types": {
-          "value": 3,
-          "target": ">=3",
-          "unit": "",
-          "ok": true
-        },
-        "land_fraction": {
-          "value": 0.3,
-          "target": [
-            0.25,
-            0.35
-          ],
-          "unit": "",
-          "ok": true
-        },
-        "global_geography": {
-          "value": 1.0,
-          "target": null,
-          "unit": "",
-          "ok": true
-        },
-        "lat_temp_corr": {
-          "value": 0.909,
-          "target": 0.7,
-          "unit": "",
-          "ok": true
-        },
-        "precip_nonneg": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        },
-        "uphill": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        }
-      },
-      "elapsed_s": 2.65
-    },
-    {
-      "seed": 20240,
-      "width": 256,
-      "height": 128,
-      "passed": true,
-      "errors": [],
-      "warnings": [],
-      "land_fraction": 0.300018310546875,
-      "n_plates": 6,
-      "civ_points": 0,
-      "metrics": {
-        "land_sea_conflict": {
-          "value": 0.0,
-          "target": null,
-          "unit": "frac",
-          "ok": true
-        },
-        "boundary_types": {
-          "value": 3,
-          "target": ">=3",
-          "unit": "",
-          "ok": true
-        },
-        "land_fraction": {
-          "value": 0.3,
-          "target": [
-            0.25,
-            0.35
-          ],
-          "unit": "",
-          "ok": true
-        },
-        "global_geography": {
-          "value": 1.0,
-          "target": null,
-          "unit": "",
-          "ok": true
-        },
-        "lat_temp_corr": {
-          "value": 0.95,
-          "target": 0.7,
-          "unit": "",
-          "ok": true
-        },
-        "precip_nonneg": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        },
-        "uphill": {
-          "value": 0,
-          "target": 0,
-          "unit": "",
-          "ok": true
-        }
-      },
-      "elapsed_s": 0.81
-    },
-    {
-      "seed": 606,
-      "width": 256,
-      "height": 128,
-      "passed": true,
-      "errors": [],
-      "warnings": [],
-      "land_fraction": 0.300018310546875,
-      "n_plates": 6,
-      "civ_points": 1,
-      "metrics": {
-        "land_sea_conflict": {
-          "value": 0.0,
-          "target": null,
-          "unit": "frac",
-          "ok": true
-        },
-        "boundary_types": {
-          "value": 3,
-          "target": ">=3",
-          "unit": "",
-          "ok": true
-        },
-        "land_fraction": {
-          "value": 0.3,
-          "target": [
-            0.25,
-            0.35
-          ],
-          "unit": "",
-          "ok": true
-        },
-        "global_geography": {
-          "value": 1.0,
+          "value": 0.932,
           "target": null,
           "unit": "",
           "ok": true
@@ -770,7 +534,243 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.02
+      "elapsed_s": 7.95
+    },
+    {
+      "seed": 314159,
+      "width": 256,
+      "height": 128,
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "land_fraction": 0.32513427734375,
+      "n_plates": 6,
+      "civ_points": 0,
+      "metrics": {
+        "land_sea_conflict": {
+          "value": 0.0,
+          "target": null,
+          "unit": "frac",
+          "ok": true
+        },
+        "boundary_types": {
+          "value": 3,
+          "target": ">=3",
+          "unit": "",
+          "ok": true
+        },
+        "land_fraction": {
+          "value": 0.325,
+          "target": [
+            0.25,
+            0.35
+          ],
+          "unit": "",
+          "ok": true
+        },
+        "global_geography": {
+          "value": 0.937,
+          "target": null,
+          "unit": "",
+          "ok": true
+        },
+        "lat_temp_corr": {
+          "value": 0.904,
+          "target": 0.7,
+          "unit": "",
+          "ok": true
+        },
+        "precip_nonneg": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        },
+        "uphill": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        }
+      },
+      "elapsed_s": 7.07
+    },
+    {
+      "seed": 888,
+      "width": 256,
+      "height": 128,
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "land_fraction": 0.329315185546875,
+      "n_plates": 6,
+      "civ_points": 1,
+      "metrics": {
+        "land_sea_conflict": {
+          "value": 0.0,
+          "target": null,
+          "unit": "frac",
+          "ok": true
+        },
+        "boundary_types": {
+          "value": 3,
+          "target": ">=3",
+          "unit": "",
+          "ok": true
+        },
+        "land_fraction": {
+          "value": 0.329,
+          "target": [
+            0.25,
+            0.35
+          ],
+          "unit": "",
+          "ok": true
+        },
+        "global_geography": {
+          "value": 0.927,
+          "target": null,
+          "unit": "",
+          "ok": true
+        },
+        "lat_temp_corr": {
+          "value": 0.888,
+          "target": 0.7,
+          "unit": "",
+          "ok": true
+        },
+        "precip_nonneg": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        },
+        "uphill": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        }
+      },
+      "elapsed_s": 3.02
+    },
+    {
+      "seed": 20240,
+      "width": 256,
+      "height": 128,
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "land_fraction": 0.32861328125,
+      "n_plates": 6,
+      "civ_points": 0,
+      "metrics": {
+        "land_sea_conflict": {
+          "value": 0.0,
+          "target": null,
+          "unit": "frac",
+          "ok": true
+        },
+        "boundary_types": {
+          "value": 3,
+          "target": ">=3",
+          "unit": "",
+          "ok": true
+        },
+        "land_fraction": {
+          "value": 0.329,
+          "target": [
+            0.25,
+            0.35
+          ],
+          "unit": "",
+          "ok": true
+        },
+        "global_geography": {
+          "value": 0.928,
+          "target": null,
+          "unit": "",
+          "ok": true
+        },
+        "lat_temp_corr": {
+          "value": 0.957,
+          "target": 0.7,
+          "unit": "",
+          "ok": true
+        },
+        "precip_nonneg": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        },
+        "uphill": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        }
+      },
+      "elapsed_s": 2.15
+    },
+    {
+      "seed": 606,
+      "width": 256,
+      "height": 128,
+      "passed": true,
+      "errors": [],
+      "warnings": [],
+      "land_fraction": 0.331085205078125,
+      "n_plates": 6,
+      "civ_points": 1,
+      "metrics": {
+        "land_sea_conflict": {
+          "value": 0.0,
+          "target": null,
+          "unit": "frac",
+          "ok": true
+        },
+        "boundary_types": {
+          "value": 3,
+          "target": ">=3",
+          "unit": "",
+          "ok": true
+        },
+        "land_fraction": {
+          "value": 0.331,
+          "target": [
+            0.25,
+            0.35
+          ],
+          "unit": "",
+          "ok": true
+        },
+        "global_geography": {
+          "value": 0.922,
+          "target": null,
+          "unit": "",
+          "ok": true
+        },
+        "lat_temp_corr": {
+          "value": 0.975,
+          "target": 0.7,
+          "unit": "",
+          "ok": true
+        },
+        "precip_nonneg": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        },
+        "uphill": {
+          "value": 0,
+          "target": 0,
+          "unit": "",
+          "ok": true
+        }
+      },
+      "elapsed_s": 1.0
     },
     {
       "seed": 707,
@@ -779,7 +779,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.3255615234375,
       "n_plates": 6,
       "civ_points": 0,
       "metrics": {
@@ -796,7 +796,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.326,
           "target": [
             0.25,
             0.35
@@ -805,13 +805,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.936,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.926,
+          "value": 0.913,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -829,7 +829,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.66
+      "elapsed_s": 0.64
     },
     {
       "seed": 808,
@@ -838,7 +838,7 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.328826904296875,
       "n_plates": 6,
       "civ_points": 0,
       "metrics": {
@@ -855,7 +855,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.329,
           "target": [
             0.25,
             0.35
@@ -864,13 +864,13 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.928,
           "target": null,
           "unit": "",
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.817,
+          "value": 0.859,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -888,7 +888,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.07
+      "elapsed_s": 1.54
     },
     {
       "seed": 909,
@@ -897,9 +897,9 @@
       "passed": true,
       "errors": [],
       "warnings": [],
-      "land_fraction": 0.300018310546875,
+      "land_fraction": 0.327880859375,
       "n_plates": 6,
-      "civ_points": 0,
+      "civ_points": 1,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -914,7 +914,7 @@
           "ok": true
         },
         "land_fraction": {
-          "value": 0.3,
+          "value": 0.328,
           "target": [
             0.25,
             0.35
@@ -923,7 +923,7 @@
           "ok": true
         },
         "global_geography": {
-          "value": 1.0,
+          "value": 0.93,
           "target": null,
           "unit": "",
           "ok": true
@@ -947,8 +947,8 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.11
+      "elapsed_s": 2.08
     }
   ],
-  "generated_at": "2026-10-11 13:40:33"
+  "generated_at": "2026-10-11 14:43:54"
 }

@@ -59,8 +59,13 @@ def ridge_detail(elev, terrain_class, seed):
 def fractalize_coast(land_mask, seed, band=None, target_land=None):
     """多尺度分形海岸线：大湾 → 小湾 → 细糙。
 
-    ``target_land`` 给定时，在整幅分形场上取分位数阈值，使输出陆地占比精确
-    == ``target_land``（确定性强制，非随机抖动，符合海平面调陆比的原则）。
+    只细化海岸带，**保留大陆主体布局**（不重写整幅海陆掩膜）。传入的
+    ``land_mask`` 若是已验证过的大陆布局，其大陆间距/孤立大陆/大洋结构
+    不会被破坏。
+
+    ``target_land`` 给定时，在海岸带内微调陆比使其贴近目标（尽力而为，
+    不强锁）：把海岸带内 field 最高的一批海/陆像素翻转。大陆内部与深海
+    始终保持不变。
     """
     try:
         from scipy.ndimage import distance_transform_edt, gaussian_filter
@@ -85,10 +90,27 @@ def fractalize_coast(land_mask, seed, band=None, target_land=None):
             + (n3 - 0.5) * band * 0.8).astype(np.float32)
     t = np.clip(1.0 - np.abs(sdf) / (band * 6.0), 0.0, 1.0) ** 0.7
     field = sdf + warp * t
-    if target_land is not None:
-        thr = np.quantile(field.astype(np.float64), 1.0 - float(target_land))
-        return (field > thr).astype(bool)
-    return (field > 0.0).astype(bool)
+    # 海岸带：sdf 接近 0、扰动权重 t 高的窄带；大陆内部/深海权重 t≈0 保持原样。
+    coast = t > 0.08
+    out = lm.copy()
+    if coast.any():
+        out[coast] = (field[coast] > 0.0).astype(bool)
+    if target_land is not None and coast.any():
+        # 海岸带内微调陆比逼近目标（尽力而为；不足则保持现状）
+        need = float(target_land) * out.size - float(out.sum())
+        if need > 1.0:
+            cand = coast & ~out
+            if cand.any():
+                idx = np.argwhere(cand)
+                order = np.argsort(-field[cand])[: int(need) + 1]
+                out[idx[order, 0], idx[order, 1]] = True
+        elif need < -1.0:
+            cand = coast & out
+            if cand.any():
+                idx = np.argwhere(cand)
+                order = np.argsort(field[cand])[: int(-need) + 1]
+                out[idx[order, 0], idx[order, 1]] = False
+    return out.astype(bool)
 
 
 def procedural_elevation(land_mask, boundaries, seed):

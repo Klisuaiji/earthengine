@@ -43,6 +43,9 @@ ISOLATION_DEG = 5.0         # min coast-to-coast gap (deg) to all others
 OCEAN_MIN = 0.25            # largest ocean basin >= 25% of the sphere
 FRAG_MAX = 0.03             # mainland may not be more than 3% sharded
 ISLET_FRAC = 0.04           # components <4% of a continent are islets, not shards
+CC_MAIN_MAX = 0.45          # max *connected-component* mainland share of land.
+                            # Prevents the continent cores from growing together
+                            # into one giant blob (real Eurasia ~0.36 + margin).
 
 _SUB = 3                    # cell subsampling step for the isolation tree
 
@@ -58,10 +61,27 @@ def _sphere_pts(h, w, ys, xs):
 
 def _largest_ocean_fraction(land_mask):
     """Fraction of the sphere in the single largest connected ocean basin."""
-    ocean = ~land_mask
+    ocean = ~land_mask.astype(bool)
     lab, n = _wrap_label(ocean)
     areas = numpy.bincount(lab.ravel(), minlength=n + 1)
     return float(areas[1:].max()) / float(ocean.size) if n else 0.0
+
+
+def _cc_mainland(land_mask):
+    """Largest connected-component of land as a share of all land.
+
+    Unlike ``continent_mask`` labels (which may touch and merge), this measures
+    the actual connected mainland blob.  If cores grow together, the value
+    exceeds ``CC_MAIN_MAX`` and the layout is re-rolled.
+    """
+    from scipy.ndimage import label
+    land = land_mask.astype(bool)
+    total = int(land.sum())
+    if total == 0:
+        return 0.0
+    lab, n = label(land, structure=numpy.ones((3, 3)))
+    sizes = numpy.bincount(lab.ravel())[1:]
+    return float(sizes.max()) / float(total)
 
 
 def _continent_fragmentation(continent_mask, labels):
@@ -167,6 +187,7 @@ def validate_global_geography(land_mask, continent_mask, land_target=None,
     frag = _continent_fragmentation(continent_mask, labels)
     gaps, iso_max = _isolation_scores(land_mask, continent_mask, labels)
     ocean = _largest_ocean_fraction(land_mask)
+    cc_main = _cc_mainland(land_mask)
 
     # per-continent gap to every OTHER continent (exclude self from the min)
     iso_others = {}
@@ -186,8 +207,9 @@ def validate_global_geography(land_mask, continent_mask, land_target=None,
     c_iso = iso_max >= math.radians(ISOLATION_DEG)
     c_ocean = ocean >= OCEAN_MIN
     c_frag = frag <= FRAG_MAX
+    c_cc = cc_main <= CC_MAIN_MAX   # cores must not grow together into one blob
 
-    ok = c_land and c_count and c_largest and c_iso and c_ocean and c_frag
+    ok = c_land and c_count and c_largest and c_iso and c_ocean and c_frag and c_cc
 
     # normalised score (each sub-metric 0..1, higher = more Earth-like)
     def _clip01(x):
@@ -199,8 +221,9 @@ def validate_global_geography(land_mask, continent_mask, land_target=None,
     s_iso = _clip01(math.degrees(iso_max) / ISOLATION_DEG)
     s_ocean = _clip01(ocean / OCEAN_MIN)
     s_frag = 1.0 - _clip01(frag / FRAG_MAX * 0.5)
-    score = 0.22 * s_land + 0.10 * s_count + 0.20 * s_largest + 0.22 * s_iso + \
-            0.16 * s_ocean + 0.10 * s_frag
+    s_cc = 1.0 if c_cc else _clip01(CC_MAIN_MAX / cc_main)
+    score = 0.20 * s_land + 0.10 * s_count + 0.18 * s_largest + 0.20 * s_iso + \
+            0.14 * s_ocean + 0.08 * s_frag + 0.10 * s_cc
 
     report = {
         "land_fraction": land_frac, "n_continents": n_cont,
@@ -208,8 +231,10 @@ def validate_global_geography(land_mask, continent_mask, land_target=None,
         "isolation_by_continent": {int(k): round(math.degrees(v), 1)
                                    for k, v in iso_others.items()},
         "largest_ocean_fraction": ocean, "fragmentation_worst": frag,
+        "cc_mainland": cc_main,
         "checks": {"land": c_land, "count": c_count, "largest": c_largest,
-                   "isolation": c_iso, "ocean": c_ocean, "fragmentation": c_frag},
+                   "isolation": c_iso, "ocean": c_ocean, "fragmentation": c_frag,
+                   "cc_mainland": c_cc},
         "score": score,
     }
     return ok, report
