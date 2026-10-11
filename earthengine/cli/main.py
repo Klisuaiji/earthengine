@@ -106,7 +106,7 @@ def cmd_render(args):
     from earthengine import rendering as R
     # 渲染风格
     style = args.style
-    if style in ("ancient", "relief", "satellite"):
+    if style in ("ancient", "relief", "satellite", "tectonic"):
         elev = z.get("terrain.elevation")
         if elev is None:
             elev = z["terrain.elevation_macro"]
@@ -122,6 +122,14 @@ def cmd_render(args):
         out = os.path.join(world_dir, "render_%s.png" % style)
         if style == "satellite" and biome is not None:
             R.map.render_satellite(elev, biome, ice, out)
+        elif style == "tectonic":
+            # 板块边界叠加高程（诊断图：海拔 + 汇聚/张裂/转换边界）
+            bt = z.get("boundaries.type",
+                       z.get("boundaries.boundary_type", None))
+            if bt is None:
+                print("ERROR: world 包缺少 boundaries.type")
+                return 1
+            R.map.render_tectonic_overlay(elev, bt, out)
         elif style in ("ancient", "relief"):
             R.map.render_relief_hires(elev, out, land_mask=(elev >= 0), ice=ice)
         else:
@@ -186,7 +194,8 @@ def main(argv=None):
 
     r = sub.add_parser("render", help="渲染 world 包")
     r.add_argument("world_dir")
-    r.add_argument("--style", default="ancient", choices=["ancient", "relief", "satellite"])
+    r.add_argument("--style", default="ancient",
+                   choices=["ancient", "relief", "satellite", "tectonic"])
     r.set_defaults(func=cmd_render)
 
     e = sub.add_parser("export", help="导出 world 包")

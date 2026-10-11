@@ -144,7 +144,7 @@ class WorldGenerator:
         self._stages["ocean"] = self._ocean
 
     def stage_terrain(self):
-        from earthengine.terrain import macro, planner, detail
+        from earthengine.terrain import macro, detail
         from earthengine.ocean import sea_level
         t = self._tect
         # 板块 land_mask（大陆布局）作为地理形状底
@@ -164,8 +164,10 @@ class WorldGenerator:
         # 用海平面强制陆地占比（flood 低海岸地，确定性、非随机抖动）
         target_land = max(0.25, min(0.35, self.land_target))
         sea_level_m = sea_level.ocean_fraction_to_sea_level(coarse, 1.0 - target_land)
-        geo_elev, terrain_class = planner.terrain_region_map(geo_lm, bounds, self.seed)
-        # 细化海岸线（分形场分位数阈值精确锁定 target_land）+ 程序化高程
+        # 细化海岸线（分形场分位数阈值精确锁定 target_land）+ 程序化高程。
+        # procedural_elevation 基于 final_land 一次性计算高程与地形区域，
+        # 与最终 land_mask 保持一致（此前在 geo_lm 上额外算一次 terrain_region_map，
+        # 结果被覆盖——重复且用过期掩膜，已删除）。
         final_land = detail.fractalize_coast(geo_lm, self.seed, target_land=target_land)
         elev, geo_elev, terrain_class = detail.procedural_elevation(final_land, bounds, self.seed)
         self._ocean["land_mask"] = final_land

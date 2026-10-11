@@ -191,6 +191,29 @@ def render_boundary(boundary_type, out_path):
     return save_png(rgb * 255, out_path)
 
 
+def render_tectonic_overlay(elev, boundary_type, out_path):
+    """板块边界叠加高程诊断图：高程晕渲为底，边界线叠加。
+
+    解决「板块图没有高度信息」——这是诊断图，同时展示海拔（颜色/晕渲）与
+    板块边界（汇聚=红、张裂=蓝、转换=绿、斜向=黄）。边界做 1px 加粗保证可见。
+    数据来源：`terrain.elevation`（高程，海平面 0，陆地>0 海洋<0）与
+    `boundaries.type`（边界类型），二者分别来自 terrain / tectonics 阶段。
+    """
+    h, w = elev.shape
+    elev = elev.astype(np.float32)
+    rgb = _hypsometric(elev)
+    shade = _hillshade(elev, vert_exag=3.0)
+    rgb *= np.clip(0.25 + 0.90 * shade[..., None], 0, 1.2)
+    mask = boundary_type != 0
+    thick = mask.copy()
+    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        thick |= np.roll(mask, (dr, dc), (0, 1))
+    col = {1: (1, 0.15, 0.15), 2: (0.15, 0.50, 1), 3: (0.15, 1, 0.35), 4: (1, 0.9, 0.2)}
+    for k, c in col.items():
+        rgb[thick & (boundary_type == k)] = c
+    return save_png(np.clip(rgb, 0, 1) * 255, out_path)
+
+
 def render_land_sea(land_mask, out_path):
     h, w = land_mask.shape
     rgb = np.where(land_mask[..., None], np.array([0.55, 0.75, 0.45], dtype=np.float32),
