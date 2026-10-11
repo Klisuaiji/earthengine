@@ -1,21 +1,36 @@
-The MIT License (MIT)
+EarthEngine Source-Available Commercial Authorization and Share-Alike License (Draft 1.0)
+Copyright (c) 2026 Klisuaiji
 
-Copyright (c) 2013-2014 Federico Tomassetti and Bret Curtis
+IMPORTANT: This is a custom source-available license, not an OSI-approved open-source license. It is provided as a project licensing draft and is not legal advice. If you need enforceable commercial terms, have a qualified lawyer review it before relying on it.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope
+This license applies only to original EarthEngine materials owned by the copyright holder and identified as licensed under this license. It does not replace or narrow any separate license that applies to third-party material, including material derived from WorldEngine and covered by the MIT License. Third-party components and their notices remain governed by their respective licenses; see THIRD_PARTY_NOTICES.md and LICENSE-MIT.txt.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. Permission for non-commercial use
+Subject to the conditions below, the copyright holder grants you a worldwide, non-exclusive, royalty-free license to use, study, copy, and modify the covered materials for personal, educational, research, and other non-commercial purposes.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. Commercial use requires prior written authorization
+You may not use the covered materials, or a derivative work containing covered materials, for a commercial purpose without prior written authorization from the copyright holder. Commercial purposes include, without limitation: selling or licensing software or services; incorporating the covered materials into a paid product; using them in a revenue-generating service; commercial hosting or deployment; and using them to provide paid consulting or production services. The copyright holder may offer separate commercial terms, including a fee.
+
+4. Share-alike source disclosure for modified versions
+If you distribute, publish, sublicense, or make a modified version of the covered materials available to other users as a hosted service, you must:
+(a) make the complete corresponding source code of that modified version available to those users at no additional charge;
+(b) license your modifications to the covered materials under this same license, or a later version designated by the copyright holder;
+(c) include build, installation, and deployment instructions reasonably sufficient to reproduce the modified version; and
+(d) preserve this license and all applicable third-party copyright and license notices.
+This source-disclosure condition does not grant permission for commercial use. If the use is commercial, you must also obtain the prior written authorization required by Section 3.
+
+5. No additional restrictions on third-party components
+You must not apply this license to third-party components in a way that removes or conflicts with rights granted by their original licenses. Where a file contains material under another license, that license continues to apply to the relevant material.
+
+6. Trademarks
+This license does not grant permission to use the EarthEngine name, logos, or other trademarks to imply endorsement or affiliation.
+
+7. No warranty
+The covered materials are provided "AS IS", without warranty of any kind, express or implied, including but not limited to merchantability, fitness for a particular purpose, and non-infringement. To the maximum extent permitted by law, the copyright holder shall not be liable for any claim, damages, or other liability arising from the materials or their use.
+
+8. Termination
+Rights under this license terminate automatically if you materially violate its terms. If the violation is cured within 30 days after you become aware of it, rights may be reinstated to the extent permitted by applicable law.
+
+9. Other terms
+If any provision is unenforceable, the remaining provisions remain in effect. No waiver is effective unless made in writing by the copyright holder. This license is governed by applicable law, subject to any mandatory rules that cannot lawfully be excluded.
