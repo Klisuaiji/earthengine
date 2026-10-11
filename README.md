@@ -76,4 +76,13 @@ geology、terrain-diffusion、world-state、pipeline、validator、cli、api、d
 `flask`（可选，Web）、`torch + terrain_diffusion`（可选，AI 增强，缺失自动回落
 程序化实现）。
 
-License: MIT（见 LICENSE.txt）。
+## 许可证与商业授权
+
+EarthEngine 原创部分采用项目自定义的“源码可见、商业使用需事先书面授权、修改版本需按相同条款公开对应源代码”许可，详见 [LICENSE.txt](LICENSE.txt)。
+
+- 个人、教育、研究等非商业用途：可按许可证条款使用和修改。
+- 商业使用、商业部署、付费产品或营收服务：必须事先取得版权持有者的书面授权。
+- 发布修改版或向用户提供修改后的托管服务：必须按许可证公开完整对应源代码；这不替代商业授权要求。
+- `legacy/` 中的 WorldEngine 代码及其他第三方材料继续遵守各自原有许可证；MIT 文本保存在 [LICENSE-MIT.txt](LICENSE-MIT.txt)，来源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+**注意：** 这是项目自定义的源码可见许可证，不是 OSI 认可的开源许可证。当前尚未完成逐文件来源审计，因此不能将所有文件都视为仅受自定义许可证约束。
