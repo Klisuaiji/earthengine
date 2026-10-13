@@ -1,0 +1,124 @@
+{
+  "engine_version": "audit-baseline",
+  "seed_count": 5,
+  "rows": [
+    {
+      "seed": 123456,
+      "w": 256,
+      "h": 128,
+      "land_frac": 0.324737548828125,
+      "elev_range_m": [
+        -6415.1572265625,
+        4067.85595703125
+      ],
+      "land_sea_conflict_px": 0,
+      "n_cc": 58,
+      "cc_mainland": 0.362,
+      "lone_islets_lt4px": 0,
+      "crust_elevation_corr": 0.464,
+      "geo_checks_passed": true,
+      "geo_fail_items": [],
+      "geography_report_visible": true,
+      "findings": []
+    },
+    {
+      "seed": 42,
+      "w": 256,
+      "h": 128,
+      "land_frac": 0.326141357421875,
+      "elev_range_m": [
+        -6383.05517578125,
+        4027.77783203125
+      ],
+      "land_sea_conflict_px": 0,
+      "n_cc": 78,
+      "cc_mainland": 0.439,
+      "lone_islets_lt4px": 0,
+      "crust_elevation_corr": -0.112,
+      "geo_checks_passed": true,
+      "geo_fail_items": [],
+      "geography_report_visible": true,
+      "findings": []
+    },
+    {
+      "seed": 777,
+      "w": 256,
+      "h": 128,
+      "land_frac": 0.327117919921875,
+      "elev_range_m": [
+        -6368.25146484375,
+        4052.083251953125
+      ],
+      "land_sea_conflict_px": 0,
+      "n_cc": 82,
+      "cc_mainland": 0.397,
+      "lone_islets_lt4px": 0,
+      "crust_elevation_corr": -0.029,
+      "geo_checks_passed": true,
+      "geo_fail_items": [],
+      "geography_report_visible": true,
+      "findings": [
+        {
+          "id": "crust_elevation_uncoupled",
+          "level": "WARN",
+          "msg": "造山带/海沟带高程差过小(<500m)——构造效应未有效进入高程",
+          "detail": {
+            "dh_construct_m": 179.1,
+            "r_construct": -0.029,
+            "n_eff_px": 711
+          }
+        }
+      ]
+    },
+    {
+      "seed": 20240,
+      "w": 256,
+      "h": 128,
+      "land_frac": 0.324920654296875,
+      "elev_range_m": [
+        -6452.22607421875,
+        4029.66064453125
+      ],
+      "land_sea_conflict_px": 0,
+      "n_cc": 72,
+      "cc_mainland": 0.346,
+      "lone_islets_lt4px": 0,
+      "crust_elevation_corr": 0.006,
+      "geo_checks_passed": true,
+      "geo_fail_items": [],
+      "geography_report_visible": true,
+      "findings": []
+    },
+    {
+      "seed": 99,
+      "w": 256,
+      "h": 128,
+      "land_frac": 0.327423095703125,
+      "elev_range_m": [
+        -6325.8759765625,
+        4057.820556640625
+      ],
+      "land_sea_conflict_px": 0,
+      "n_cc": 64,
+      "cc_mainland": 0.443,
+      "lone_islets_lt4px": 0,
+      "crust_elevation_corr": 0.23,
+      "geo_checks_passed": true,
+      "geo_fail_items": [],
+      "geography_report_visible": true,
+      "findings": []
+    }
+  ],
+  "consolidated_findings": [
+    {
+      "id": "crust_elevation_uncoupled",
+      "level": "WARN",
+      "msg": "造山带/海沟带高程差过小(<500m)——构造效应未有效进入高程",
+      "detail": {
+        "dh_construct_m": 179.1,
+        "r_construct": -0.029,
+        "n_eff_px": 711
+      }
+    }
+  ]
+}

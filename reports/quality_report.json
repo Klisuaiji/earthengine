@@ -44,7 +44,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.898,
+          "value": 0.906,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -62,7 +62,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 6.55
+      "elapsed_s": 5.84
     },
     {
       "seed": 42,
@@ -73,7 +73,7 @@
       "warnings": [],
       "land_fraction": 0.326141357421875,
       "n_plates": 6,
-      "civ_points": 1,
+      "civ_points": 0,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -103,7 +103,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.957,
+          "value": 0.955,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -121,7 +121,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 2.07
+      "elapsed_s": 1.84
     },
     {
       "seed": 777,
@@ -162,7 +162,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.97,
+          "value": 0.966,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -180,7 +180,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.64
+      "elapsed_s": 0.57
     },
     {
       "seed": 28070,
@@ -221,7 +221,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.968,
+          "value": 0.967,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -239,7 +239,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 4.39
+      "elapsed_s": 3.96
     },
     {
       "seed": 99,
@@ -280,7 +280,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.932,
+          "value": 0.936,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -298,7 +298,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 20.02
+      "elapsed_s": 18.21
     },
     {
       "seed": 2024,
@@ -339,7 +339,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.923,
+          "value": 0.926,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -357,7 +357,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 5.91
+      "elapsed_s": 5.43
     },
     {
       "seed": 555,
@@ -398,7 +398,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.922,
+          "value": 0.921,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -416,7 +416,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.99
+      "elapsed_s": 1.82
     },
     {
       "seed": 11,
@@ -427,7 +427,7 @@
       "warnings": [],
       "land_fraction": 0.3272705078125,
       "n_plates": 6,
-      "civ_points": 1,
+      "civ_points": 0,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -457,7 +457,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.971,
+          "value": 0.972,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -475,7 +475,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 5.7
+      "elapsed_s": 5.25
     },
     {
       "seed": 2025,
@@ -516,7 +516,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.972,
+          "value": 0.973,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -534,7 +534,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 8.2
+      "elapsed_s": 7.5
     },
     {
       "seed": 314159,
@@ -575,7 +575,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.904,
+          "value": 0.901,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -593,7 +593,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 7.29
+      "elapsed_s": 6.76
     },
     {
       "seed": 888,
@@ -634,7 +634,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.885,
+          "value": 0.884,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -652,7 +652,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 3.22
+      "elapsed_s": 3.01
     },
     {
       "seed": 20240,
@@ -693,7 +693,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.958,
+          "value": 0.96,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -711,7 +711,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 2.37
+      "elapsed_s": 2.13
     },
     {
       "seed": 606,
@@ -722,7 +722,7 @@
       "warnings": [],
       "land_fraction": 0.327972412109375,
       "n_plates": 6,
-      "civ_points": 1,
+      "civ_points": 2,
       "metrics": {
         "land_sea_conflict": {
           "value": 0.0,
@@ -752,7 +752,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.976,
+          "value": 0.977,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -770,7 +770,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.07
+      "elapsed_s": 0.97
     },
     {
       "seed": 707,
@@ -811,7 +811,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.912,
+          "value": 0.915,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -829,7 +829,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 0.71
+      "elapsed_s": 0.64
     },
     {
       "seed": 808,
@@ -870,7 +870,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.857,
+          "value": 0.861,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -888,7 +888,7 @@
           "ok": true
         }
       },
-      "elapsed_s": 1.69
+      "elapsed_s": 1.48
     },
     {
       "seed": 909,
@@ -929,7 +929,7 @@
           "ok": true
         },
         "lat_temp_corr": {
-          "value": 0.951,
+          "value": 0.952,
           "target": 0.7,
           "unit": "",
           "ok": true
@@ -947,8 +947,8 @@
           "ok": true
         }
       },
-      "elapsed_s": 2.24
+      "elapsed_s": 2.05
     }
   ],
-  "generated_at": "2026-10-11 23:02:02"
+  "generated_at": "2026-10-13 23:19:10"
 }

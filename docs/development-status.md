@@ -114,3 +114,25 @@
 - seed42=0.45、seed777=0.39，全部 checks True
 - 16/16 seed 质量报告通过；test_pipeline/geocausality/ai/web/run_checks 全绿
 - land 由 0.300（fractalize 锁）变为 ~0.325（build_continents 自然陆比），仍满足验证
+
+---
+
+## 阶段 0：基准 + 数据流审计（按"地质时间演化"路线）
+
+新增可运行审计 `tests/audit_baseline.py`（固定 seed 生成 + 分层检查 + 失败项清单，
+报告写入 `reports/baseline_audit.json`）。审计确认两个优先验证点并修复：
+
+**失败项 1：best-effort 大陆验证失败不可见（ERROR，已修）**
+`geography_report` 只存进 `_tect`，未进 `WorldState.validation`/`world.json`，
+调用方无法识别"尽力生成但未通过"。修复：CLI `cmd_generate` 合并大陆验证到
+`validation.geography`（checks/score），失败即置 `passed=False` + ERROR。
+
+**失败项 2：地壳演化未进入高程（WARN，已修）**
+`CrustState.elevation_bias/thickness` 无下游消费，`evolve_crust` 改数据不改地形。
+修复：`stage_crust` 保存演化前 bias 基准 `_crust_bias0`；`stage_terrain` 把演化
+偏差场 `deff=bias-b0`（海沟-6000/造山+3000/洋脊抬升）平滑后以 0.6 权重叠加进
+最终高程，构造事件真正改变地形。
+
+**审计结果（5 seed）**：大陆验证 5/5 通过（阶段 1 布局健康）；报告可见性 5/5；
+地壳耦合方向判据（造山带 vs 海沟带高程差>500m）4/5 通过，seed777 单 seed 弱（WARN）。
+16/16 seed 质量报告通过；全测试套件绿。

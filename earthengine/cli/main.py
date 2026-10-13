@@ -46,6 +46,24 @@ def cmd_generate(args):
     # 验证
     validator = WorldValidator(cfg)
     ok, report = validator.validate(ws)
+    # 合并大陆布局验证（best-effort 时失败项必须可见，不能当作有效地图）
+    geo_rep = getattr(gen, "_tect", {}).get("geography_report")
+    if geo_rep:
+        g_checks = geo_rep.get("checks") or {}
+        g_ok = bool(g_checks) and all(g_checks.values())
+        report.setdefault("geography", {})
+        report["geography"].update({
+            "passed": bool(g_ok),
+            "checks": g_checks,
+            "score": geo_rep.get("score"),
+            "metrics": geo_rep.get("metrics"),
+        })
+        if not g_ok:
+            ok = False
+            report.setdefault("errors", []).append({
+                "check": "geography", "level": "ERROR",
+                "message": "大陆布局 best-effort 未通过全部验证（失败项见 validation.geography.checks）",
+            })
     ws.validation = report
     n_err = len(report["errors"])
     n_warn = len(report["warnings"])

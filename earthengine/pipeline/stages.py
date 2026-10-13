@@ -125,6 +125,9 @@ class WorldGenerator:
         t = self._tect
         cs = C.generate_crust(t["merged"], t.get("is_ocean", []),
                               self.h, self.w, self.seed)
+        # 记录演化前的高程偏置基准，供 stage_terrain 计算"演化驱动的构造偏差"
+        # （海沟加深/造山抬升/洋脊变浅），否则地壳演化只改数据不影响地形。
+        self._crust_bias0 = cs.elevation_bias.copy()
         if "boundary_type" in t:
             cs = E.evolve_crust(cs, t["boundary_type"], self.h, self.w)
         self._crust = cs
@@ -169,6 +172,17 @@ class WorldGenerator:
         # 不再用 fractalize_coast 的全局分位数阈值重写海陆掩膜（那会丢弃验证结果）。
         final_land = geo_lm
         elev, geo_elev, terrain_class = detail.procedural_elevation(final_land, bounds, self.seed)
+        # 地壳演化-高程耦合：把演化驱动的构造偏差（海沟加深/造山抬升/洋脊变浅）
+        # 叠加进最终高程，让构造事件真正改变地形，而非只更新地壳数据。
+        b0 = getattr(self, "_crust_bias0", None)
+        cs = getattr(self, "_crust", None)
+        if b0 is not None and cs is not None and hasattr(cs, "elevation_bias"):
+            deff = cs.elevation_bias - b0
+            if deff.size and float(np.abs(deff).max()) > 1.0:
+                from scipy.ndimage import gaussian_filter
+                deff = np.clip(gaussian_filter(deff.astype(np.float32), 1.0),
+                               -3500.0, 3500.0)
+                elev = (elev.astype(np.float32) + 0.6 * deff).astype(np.float32)
         self._ocean["land_mask"] = final_land
         self._ocean["sea_level_m"] = sea_level_m
         self._terrain = {
