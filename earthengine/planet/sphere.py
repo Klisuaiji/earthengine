@@ -72,7 +72,9 @@ class LatLonGrid(SphereGrid):
             sl = np.sin(np.deg2rad(lat))
             co = np.cos(np.deg2rad(lon))
             so = np.sin(np.deg2rad(lon))
-            self._xyz = np.stack([cl * co, cl * so, np.broadcast_to(sl, lat.shape)], axis=-1)
+            cl_co = cl * co
+            self._xyz = np.stack([cl_co, cl * so,
+                                  np.broadcast_to(sl, cl_co.shape)], axis=-1)
         return self._xyz.astype(np.float32)
 
     def neighbors(self) -> np.ndarray:

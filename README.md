@@ -16,6 +16,28 @@
 - **AI 可插拔**：核心只依赖 `TerrainEnhancer` 抽象，无 AI 也能跑完整世界；
 - **发布零负担**：核心依赖仅 numpy（Pillow/scipy/flask 可选）。
 
+## 地质时间演化
+
+以**运动学驱动的球面欧拉旋转**为核心（参考 GPlates 的刚性板块重建思路）：每个
+板块携带一个欧拉角速度矢量（轴 + 角速率），按时间步在球面上旋转所属大陆地壳、
+海陆掩膜、大陆标签与板块边界，输出多个地质时间截面。同一 seed + 时间序列可复现
+相同演化；无分裂/碰撞时大陆形状与陆面积保持不变。
+
+![地质时间演化：0 / 30 / 60 Ma 时间截面（seed 123456）](docs/evolution_timesteps.png)
+
+```bash
+python3 examples/evolve_timesteps.py --seed 123456 --times 0,30,60
+# -> reports/evolution_timesteps.png
+```
+
+- **阶段 2 大陆漂移**：`earthengine/tectonics/geological_evolution.py`，
+  Rodrigues 球面旋转 + 最近邻反投影采样，确定性时间积分。
+- **阶段 3 构造事件**：地壳演化（俯冲海沟 / 陆缘碰撞造山 / 洋脊 / 裂谷）由
+  `tectonics/evolution.py` 更新厚度/age/elevation_bias，并经 `stage_terrain`
+  叠加进最终高程——构造事件改变地形，而非只改边界颜色。
+- **阶段 4 时间截面接回**：每个时间截面的海陆 + 边界交回 `terrain.detail`
+  重新生成对应高程，地形与地壳同属一个时间截面。
+
 ## 快速开始
 
 ```bash
